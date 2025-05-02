@@ -4,6 +4,7 @@ from email.mime.image import MIMEImage
 import io
 import json
 import os
+import shutil
 import sys
 import subprocess
 from tkinter import messagebox
@@ -13,23 +14,10 @@ import smtplib
 import random
 import zipfile
 import string
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from google.auth.transport.requests import Request
-from googleapiclient.http import MediaIoBaseDownload
-from google.oauth2.credentials import Credentials
 import requests
-
-# — Configuración de entorno para GTK/Cairo (sin privilegios de administrador) —
-# Añade la carpeta portable de GTK al PATH para que cairocffi encuentre cairo-2.dll
-os.environ['PATH'] = (
-    r"C:\Users\pysnepsdbs08\gtk3-runtime\bin"
-    + os.pathsep + os.environ.get('PATH', '')
-)
-# Inserta la ruta al site-packages correcto antes de importar pandas/cairosvg
-sys.path.insert(0,
-    r"C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\Lib\site-packages"
-)
+import tkinter as tk
+from tkinter import ttk
+from tqdm import tqdm
 
 # — Librerías estándar —
 # (subprocess ya importado arriba si lo necesitas para llamadas externas)
@@ -44,44 +32,96 @@ from dashboard import open_dashboard
 
 from version import __version__ as local_version
 
+app_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
+
+update_json_url  = (
+            "https://raw.githubusercontent.com/"
+            "JhoanDuarte/"
+            "Capturador_Actualizacioness/"
+            "main/latest.json"
+        )
+repo_url = "https://github.com/JhoanDuarte/Capturador_Actualizacioness"
+
 def check_for_update():
     try:
-        # 1. Descarga el JSON con la última versión
-        URL = (
-        "https://raw.githubusercontent.com/"
-        "JhoanDuarte/"
-        "Capturador_Actualizacioness/"
-        "main/latest.json"
-        )
-
-        resp = requests.get(URL, timeout=5)
+        # 1. Descargar el JSON con la última versión desde GitHub
+        print("[Updater] Comprobando actualización...")
+        resp = requests.get(update_json_url, timeout=5)
         resp.raise_for_status()
         meta = resp.json()
-        remote_v = meta.get("version")
-        zip_url  = meta.get("url")
+        remote_version = meta.get("version")
+        zip_url = meta.get("url")
 
-        # 2. Si la versión remota difiere, aplica la actualización
-        if remote_v and remote_v != local_version and zip_url:
-            print(f"[Updater] Nueva versión {remote_v}. Actualizando…")
+        # Si la versión remota es diferente a la local, actualizamos
+        if remote_version and remote_version != local_version:
+            print(f"[Updater] Nueva versión {remote_version}. Actualizando...")
+
+            # 2. Crear ventana con barra de progreso
+            root = tk.Tk()
+            root.title("Actualización en progreso")
+
+            label = tk.Label(root, text=f"Actualizando a la versión {remote_version}...")
+            label.pack(pady=10)
+
+            progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate")
+            progress.pack(pady=10)
+            progress["value"] = 0
+            root.update()
+
+            # 3. Descargar el archivo zip y mostrar la barra de progreso
             z_resp = requests.get(zip_url, stream=True)
             z_resp.raise_for_status()
 
-            # 3. Extrae sobreescribiendo en el directorio de la app
-            app_dir = os.path.dirname(
-                sys.executable if getattr(sys, "frozen", False) else __file__
-            )
-            with zipfile.ZipFile(io.BytesIO(z_resp.content)) as z:
-                z.extractall(app_dir)
+            total_size = int(z_resp.headers.get('content-length', 0))
+            chunk_size = 1024  # 1 KB por chunk
+            num_chunks = total_size // chunk_size
 
-            # 4. Relanza el exe y sale la versión vieja
-            exe = os.path.join(app_dir, "login_app.exe")
-            subprocess.Popen([exe], cwd=app_dir)
+            # Para la barra de progreso
+            for i, chunk in enumerate(tqdm(z_resp.iter_content(chunk_size=chunk_size), total=num_chunks, unit="KB", desc="Descargando")):
+                if chunk:
+                    progress["value"] = (i / num_chunks) * 100  # Actualiza el progreso
+                    root.update_idletasks()
+
+            # 4. Retroceder dos carpetas desde donde está el ejecutable
+            app_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
+            parent_dir = os.path.dirname(os.path.dirname(app_dir))  # Retroceder dos carpetas
+
+            dist_dir = os.path.join(parent_dir, 'dist')
+            build_dir = os.path.join(parent_dir, 'build')
+
+            # 5. Borrar las carpetas dist y build si existen
+            if os.path.isdir(dist_dir):
+                shutil.rmtree(dist_dir)
+            if os.path.isdir(build_dir):
+                shutil.rmtree(build_dir)
+
+            # 6. Extraer el zip en el directorio padre (donde estaban dist y build)
+            with zipfile.ZipFile(io.BytesIO(z_resp.content)) as z:
+                z.extractall(parent_dir)  # Extrae las nuevas carpetas
+
+            progress["value"] = 100  # Completa la barra de progreso
+            root.update_idletasks()
+
+            # 7. Relanzar el exe y cerrar la aplicación actual
+            label.config(text="Actualización completada. Reiniciando aplicación...")
+            root.update()
+
+            exe = os.path.join(dist_dir, "login_app.exe")  # El exe está dentro de dist
+            subprocess.Popen([exe], cwd=dist_dir)
+            root.after(1000, root.quit)  # Cierra la ventana después de 1 segundo
+            root.mainloop()
+
+            # 8. Eliminar el archivo ZIP descargado
+            os.remove(zip_url.split('/')[-1])  # Eliminar el ZIP descargado
+
             sys.exit(0)
+
     except Exception as e:
-        print(f"[Updater] No se pudo chequear actualizaciones: {e}")
+        QtWidgets.QMessageBox.critical(f"[Updater] No se pudo chequear actualizaciones: {e}")
 
 # Llámalo justo al arranque
 check_for_update()
+
 
 def run_dashboard_from_args():
     # Si estamos en el exe congelado y el primer arg es dashboard.py
