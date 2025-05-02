@@ -47,10 +47,14 @@ from version import __version__ as local_version
 def check_for_update():
     try:
         # 1. Descarga el JSON con la última versión
-        resp = requests.get(
-            "https://JhoanDuarte/Capturador_Actualizaciones/latest.json",
-            timeout=5
+        URL = (
+        "https://raw.githubusercontent.com/"
+        "JhoanDuarte/"
+        "Capturador_Actualizacioness/"
+        "main/latest.json"
         )
+
+        resp = requests.get(URL, timeout=5)
         resp.raise_for_status()
         meta = resp.json()
         remote_v = meta.get("version")
@@ -187,7 +191,7 @@ class LoginWindow(QtWidgets.QWidget):
             vbox.addWidget(lbl_logo)
 
         # Texto debajo del logo
-        lbl_text = QtWidgets.QLabel("Iniciar sesión", alignment=QtCore.Qt.AlignCenter) #
+        lbl_text = QtWidgets.QLabel("Iniciar Sesión", alignment=QtCore.Qt.AlignCenter) #
         lbl_text.setStyleSheet("""
             color: white;
             font-size: 28px;  /* Tamaño aumentado */
