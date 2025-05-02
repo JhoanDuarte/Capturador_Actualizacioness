@@ -48,7 +48,7 @@ def check_for_update():
     try:
         # 1. Descarga el JSON con la última versión
         resp = requests.get(
-            "https://JhoanDuarte/Capturador_Actualizaciones/latest.json",
+            "https://JhoanDuarte/Capturador_Actualizacioness/latest.json",
             timeout=5
         )
         resp.raise_for_status()
