@@ -47,10 +47,14 @@ from version import __version__ as local_version
 def check_for_update():
     try:
         # 1. Descarga el JSON con la última versión
-        resp = requests.get(
-            "https://JhoanDuarte/Capturador_Actualizacioness/latest.json",
-            timeout=5
+        URL = (
+        "https://raw.githubusercontent.com/"
+        "JhoanDuarte/"
+        "Capturador_Actualizacioness/"
+        "main/latest.json"
         )
+
+        resp = requests.get(URL, timeout=5)
         resp.raise_for_status()
         meta = resp.json()
         remote_v = meta.get("version")
