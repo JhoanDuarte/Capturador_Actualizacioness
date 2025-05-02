@@ -24,12 +24,12 @@ a = Analysis(
         # Qt platform plugin
         (r'C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwindows.dll', 'platforms'),
         # Dashboard y logo
-        (r'C:\Users\pysnepsdbs08\Downloads\APP_DASHBOARD_CAPTURADOR_DATOS\dashboard.py', '.'),
-        (r'C:\Users\pysnepsdbs08\Downloads\APP_DASHBOARD_CAPTURADOR_DATOS\LogoImg.png', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\dashboard.py', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\LogoImg.png', '.'),
         # JSONS: Se copian al mismo directorio donde estará el EXE
-        (r'C:\Users\pysnepsdbs08\Downloads\APP_DASHBOARD_CAPTURADOR_DATOS\latest.json', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\latest.json', '.'),
         # versionamiento
-        (r'C:\Users\pysnepsdbs08\Downloads\APP_DASHBOARD_CAPTURADOR_DATOS\version.py', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\version.py', '.'),
         *ctk_datas
     ],
     hiddenimports=[
