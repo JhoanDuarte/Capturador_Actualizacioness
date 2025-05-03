@@ -234,7 +234,7 @@ class LoginWindow(QtWidgets.QWidget):
             vbox.addWidget(lbl_logo)
 
         # Texto debajo del logo
-        lbl_text = QtWidgets.QLabel("PRUEBA", alignment=QtCore.Qt.AlignCenter) #
+        lbl_text = QtWidgets.QLabel("Iniciar Sesión", alignment=QtCore.Qt.AlignCenter) #
         lbl_text.setStyleSheet("""
             color: white;
             font-size: 28px;  /* Tamaño aumentado */
@@ -703,4 +703,6 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
 if __name__ == "__main__":
     check_for_update_and_exit_if_needed()  # 👈 Esto va PRIMERO. Si no está actualizado, se sale.
     app = QtWidgets.QApplication(sys.argv)
+    w = LoginWindow()
+    w.show()
     sys.exit(app.exec_())
