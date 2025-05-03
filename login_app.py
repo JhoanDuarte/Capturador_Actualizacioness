@@ -1,12 +1,17 @@
+import ctypes
+import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 import io
 import json
+import logging
 import os
 import shutil
 import sys
 import subprocess
+from threading import Thread
+import time
 from tkinter import messagebox
 import customtkinter as ctk
 import bcrypt
@@ -18,6 +23,7 @@ import requests
 import tkinter as tk
 from tkinter import ttk
 from tqdm import tqdm
+import psutil
 
 # — Librerías estándar —
 # (subprocess ya importado arriba si lo necesitas para llamadas externas)
@@ -32,96 +38,92 @@ from dashboard import open_dashboard
 
 from version import __version__ as local_version
 
-app_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
+APP_NAME = "Dashboard_Capturador_Datos"
+UPDATE_JSON_URL = "https://raw.githubusercontent.com/JhoanDuarte/Capturador_Actualizacioness/main/latest.json"
 
-update_json_url  = (
-            "https://raw.githubusercontent.com/"
-            "JhoanDuarte/"
-            "Capturador_Actualizacioness/"
-            "main/latest.json"
-        )
-repo_url = "https://github.com/JhoanDuarte/Capturador_Actualizacioness"
+try:
+    from version import __version__ as local_version
+except ImportError:
+    local_version = "1.0.4"  # Si no hay versión, se forzará la actualización
 
-def check_for_update():
+import os
+import sys
+import requests
+import tkinter as tk
+from tkinter import messagebox
+
+def get_target_zip_path(version):
+    # Misma lógica de antes
+    app_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
+    target_dir = os.path.abspath(os.path.join(app_dir, "..", ".."))
+    zip_name = f"{APP_NAME}_{version}.zip"
+    return os.path.join(target_dir, zip_name)
+
+def show_update_required_window(zip_path, version):
+    # Crea una ventana modal que no deja avanzar al login
+    window = tk.Tk()
+    window.title("Actualización requerida")
+    window.geometry("520x180")
+    window.resizable(False, False)
+
+    zip_name = os.path.basename(zip_path)
+    msg = (
+        f"Se ha descargado la actualización requerida.\n\n"
+        f"Versión: {version}\n"
+        f"Archivo: {zip_name}\n"
+        f"Ubicación: {os.path.dirname(zip_path)}"
+    )
+    tk.Label(window, text=msg, font=("Arial", 10), justify="left", wraplength=500).pack(pady=10)
+
+    def abrir_directorio():
+        # Abre el explorador y luego cierra la app
+        os.startfile(os.path.dirname(zip_path))
+        window.destroy()
+
+    tk.Button(
+        window,
+        text="Abrir carpeta de actualización",
+        command=abrir_directorio
+    ).pack(pady=10)
+
+    # Si cierra con la “X”, también sale toda la app
+    window.protocol("WM_DELETE_WINDOW", window.destroy)
+    window.mainloop()
+
+    # Al destruir la ventana, matamos el proceso para que no siga al login
+    os._exit(0)
+
+def check_for_update_and_exit_if_needed():
     try:
-        # 1. Descargar el JSON con la última versión desde GitHub
-        print("[Updater] Comprobando actualización...")
-        resp = requests.get(update_json_url, timeout=5)
-        resp.raise_for_status()
-        meta = resp.json()
-        remote_version = meta.get("version")
-        zip_url = meta.get("url")
+        # Descargamos el JSON de versiones
+        r = requests.get(UPDATE_JSON_URL, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        remote_version = data.get("version")
+        zip_url = data.get("url")
 
-        # Si la versión remota es diferente a la local, actualizamos
-        if remote_version and remote_version != local_version:
-            print(f"[Updater] Nueva versión {remote_version}. Actualizando...")
+        # Si cambió la versión, forzamos descarga y bloqueo
+        if local_version != remote_version:
+            zip_path = get_target_zip_path(remote_version)
 
-            # 2. Crear ventana con barra de progreso
-            root = tk.Tk()
-            root.title("Actualización en progreso")
+            # Sólo descargar si no existe ya
+            if not os.path.exists(zip_path):
+                r2 = requests.get(zip_url, timeout=30)
+                r2.raise_for_status()
+                os.makedirs(os.path.dirname(zip_path), exist_ok=True)
+                with open(zip_path, "wb") as f:
+                    f.write(r2.content)
 
-            label = tk.Label(root, text=f"Actualizando a la versión {remote_version}...")
-            label.pack(pady=10)
+            # Muestra ventana y, al cerrarla o pulsar el botón, sale todo
+            show_update_required_window(zip_path, remote_version)
 
-            progress = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate")
-            progress.pack(pady=10)
-            progress["value"] = 0
-            root.update()
-
-            # 3. Descargar el archivo zip y mostrar la barra de progreso
-            z_resp = requests.get(zip_url, stream=True)
-            z_resp.raise_for_status()
-
-            total_size = int(z_resp.headers.get('content-length', 0))
-            chunk_size = 1024  # 1 KB por chunk
-            num_chunks = total_size // chunk_size
-
-            # Para la barra de progreso
-            for i, chunk in enumerate(tqdm(z_resp.iter_content(chunk_size=chunk_size), total=num_chunks, unit="KB", desc="Descargando")):
-                if chunk:
-                    progress["value"] = (i / num_chunks) * 100  # Actualiza el progreso
-                    root.update_idletasks()
-
-            # 4. Retroceder dos carpetas desde donde está el ejecutable
-            app_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
-            parent_dir = os.path.dirname(os.path.dirname(app_dir))  # Retroceder dos carpetas
-
-            dist_dir = os.path.join(parent_dir, 'dist')
-            build_dir = os.path.join(parent_dir, 'build')
-
-            # 5. Borrar las carpetas dist y build si existen
-            if os.path.isdir(dist_dir):
-                shutil.rmtree(dist_dir)
-            if os.path.isdir(build_dir):
-                shutil.rmtree(build_dir)
-
-            # 6. Extraer el zip en el directorio padre (donde estaban dist y build)
-            with zipfile.ZipFile(io.BytesIO(z_resp.content)) as z:
-                z.extractall(parent_dir)  # Extrae las nuevas carpetas
-
-            progress["value"] = 100  # Completa la barra de progreso
-            root.update_idletasks()
-
-            # 7. Relanzar el exe y cerrar la aplicación actual
-            label.config(text="Actualización completada. Reiniciando aplicación...")
-            root.update()
-
-            exe = os.path.join(dist_dir, "login_app.exe")  # El exe está dentro de dist
-            subprocess.Popen([exe], cwd=dist_dir)
-            root.after(1000, root.quit)  # Cierra la ventana después de 1 segundo
-            root.mainloop()
-
-            # 8. Eliminar el archivo ZIP descargado
-            os.remove(zip_url.split('/')[-1])  # Eliminar el ZIP descargado
-
-            sys.exit(0)
-
+        # Si la versión es la misma, simplemente retorna y deja continuar al login
     except Exception as e:
-        QtWidgets.QMessageBox.critical(f"[Updater] No se pudo chequear actualizaciones: {e}")
-
-# Llámalo justo al arranque
-check_for_update()
-
+        # En caso de error al verificar actualización, avisa y no deja avanzar
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("Error", f"No se pudo verificar la actualización:\n{e}")
+        os._exit(0)
 
 def run_dashboard_from_args():
     # Si estamos en el exe congelado y el primer arg es dashboard.py
@@ -148,6 +150,7 @@ def run_dashboard_from_args():
 
 # Ejecutamos la detección *antes* de definir nada más
 run_dashboard_from_args()
+
 
 # Conexión a BD
 conn = conectar_sql_server('DB_DATABASE')
@@ -231,7 +234,7 @@ class LoginWindow(QtWidgets.QWidget):
             vbox.addWidget(lbl_logo)
 
         # Texto debajo del logo
-        lbl_text = QtWidgets.QLabel("Iniciar Sesión", alignment=QtCore.Qt.AlignCenter) #
+        lbl_text = QtWidgets.QLabel("PRUEBA", alignment=QtCore.Qt.AlignCenter) #
         lbl_text.setStyleSheet("""
             color: white;
             font-size: 28px;  /* Tamaño aumentado */
@@ -698,7 +701,6 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
 
 
 if __name__ == "__main__":
+    check_for_update_and_exit_if_needed()  # 👈 Esto va PRIMERO. Si no está actualizado, se sale.
     app = QtWidgets.QApplication(sys.argv)
-    w = LoginWindow()
-    w.show()
     sys.exit(app.exec_())
