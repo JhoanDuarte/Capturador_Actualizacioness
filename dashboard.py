@@ -1564,11 +1564,6 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
 
 def ver_progreso(root, conn):
-    import datetime
-    import tkinter as tk
-    from tkinter import filedialog, messagebox
-    import customtkinter as ctk
-    import csv
 
     # — Funciones auxiliares —
     def parse_fecha(s):
@@ -1685,7 +1680,7 @@ def ver_progreso(root, conn):
         cur.close()
 
     def exportar():
-        # Validar paquete seleccionado
+        # 1) Validar paquete y filtros (idéntico a cargar_tabs)
         try:
             pkg = int(pkg_var.get())
         except ValueError:
@@ -1696,7 +1691,8 @@ def ver_progreso(root, conn):
         d2 = parse_fecha(fecha_hasta.get().strip())
 
         filtros = ["a.NUM_PAQUETE = %s"]
-        params = [pkg]
+        params  = [pkg]
+
         if d1:
             filtros.append("t.FECHA_SERVICIO >= %s"); params.append(d1)
         if d2:
@@ -1714,6 +1710,7 @@ def ver_progreso(root, conn):
 
         where_clause = " AND ".join(filtros)
 
+        # 2) Diálogo de guardado
         path = filedialog.asksaveasfilename(
             parent=win,
             defaultextension=".csv",
@@ -1722,25 +1719,39 @@ def ver_progreso(root, conn):
         if not path:
             return
 
-        sql = (
-            "SELECT a.RADICADO, t.FECHA_SERVICIO, s.NAME AS ESTADO, "
-            "u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO, "
-            "d.AUTORIZACION, d.CODIGO_SERVICIO, d.CANTIDAD, "
-            "d.VLR_UNITARIO, d.COPAGO, d.OBSERVACION "
-            "FROM ASIGNACION_TIPIFICACION a "
-            "JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID = t.ID "
-            "JOIN USERS u ON t.USER_ID = u.ID "
-            "JOIN STATUS s ON a.STATUS_ID = s.ID "
-            f"WHERE {where_clause} "
-            "ORDER BY a.RADICADO, t.FECHA_SERVICIO"
-        )
+        # 3) SQL unificado (mismos campos que en exportar_paquete)
+        sql = f"""
+        SELECT
+            a.RADICADO                                AS RADICADO,
+            CONVERT(varchar(10), t.FECHA_SERVICIO,103) AS FECHA_SERVICIO,
+            d.AUTORIZACION                            AS AUTORIZACION,
+            d.CODIGO_SERVICIO                         AS COD_SERVICIO,
+            CONVERT(int, d.CANTIDAD)                  AS CANTIDAD,
+            CONVERT(int, d.VLR_UNITARIO)              AS VLR_UNITARIO,
+            t.DIAGNOSTICO                             AS DIAGNOSTICO,
+            t.fecha_creacion     AS CreatedOn,
+            u.FIRST_NAME + ' ' + u.LAST_NAME          AS ModifiedBy,
+            td.NAME                                   AS TipoDocumento,
+            a.NUM_DOC                                 AS NumeroDocumento,
+            CONVERT(int, d.COPAGO)                    AS CM_COPAGO
+        FROM ASIGNACION_TIPIFICACION a
+        JOIN TIPIFICACION t         ON t.ASIGNACION_ID   = a.RADICADO
+        JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID = t.ID
+        JOIN USERS u                ON u.ID              = t.USER_ID
+        JOIN TIPO_DOC td            ON td.ID             = t.TIPO_DOC_ID
+        JOIN STATUS s               ON s.ID              = a.STATUS_ID
+        WHERE {where_clause}
+        ORDER BY a.RADICADO, t.FECHA_SERVICIO
+        """
+
+        # 4) Ejecuta y vuelca CSV
         cur2 = conn.cursor()
         cur2.execute(sql, tuple(params))
-        rows = cur2.fetchall()
+        rows    = cur2.fetchall()
         headers = [col[0] for col in cur2.description]
         cur2.close()
 
+        import csv
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(headers)

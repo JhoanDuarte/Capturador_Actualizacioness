@@ -7,7 +7,7 @@ block_cipher = None
 # 1) Todas las DLL de GTK/Cairo
 gtk_bins = glob.glob(r'C:\Program Files\GTK3-Runtime Win64\bin\*.dll')
 gtk_bins.append(
-    r'C:\Users\Jhoan\AppData\Local\Programs\Python\Python313\DLLs\unicodedata.pyd'
+    r'C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\DLLs\unicodedata.pyd'
 )
 
 # 2) Todo CustomTkinter (código + datos)
@@ -22,14 +22,14 @@ a = Analysis(
         ('.env', '.'),
         ('Fondo.png', '.'),
         # Qt platform plugin
-        (r'C:\Users\Jhoan\AppData\Local\Programs\Python\Python313\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwindows.dll', 'platforms'),
+        (r'C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwindows.dll', 'platforms'),
         # Dashboard y logo
-        (r'C:\Users\Jhoan\Downloads\Capturador_Actualizacioness\dashboard.py', '.'),
-        (r'C:\Users\Jhoan\Downloads\Capturador_Actualizacioness\LogoImg.png', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\dashboard.py', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\LogoImg.png', '.'),
         # JSONS: Se copian al mismo directorio donde estará el EXE
-        (r'C:\Users\Jhoan\Downloads\Capturador_Actualizacioness\latest.json', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\latest.json', '.'),
         # versionamiento
-        (r'C:\Users\Jhoan\Downloads\Capturador_Actualizacioness\version.py', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\version.py', '.'),
         *ctk_datas
     ],
     hiddenimports=[
@@ -60,7 +60,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    icon=r'C:\Users\Jhoan\Downloads\Capturador_Actualizacioness\Logo.ico'
+    icon=r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\Logo.ico'
 )
 
 coll = COLLECT(
