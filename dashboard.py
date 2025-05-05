@@ -2430,7 +2430,6 @@ if __name__ == "__main__":
     import sys
     import customtkinter as ctk
 
-    # Asegúrate de que lleguen 4 argumentos
     if len(sys.argv) != 4:
         print("Uso: python dashboard.py <user_id> <first_name> <last_name>")
         sys.exit(1)
@@ -2438,6 +2437,9 @@ if __name__ == "__main__":
     _, uid, fn, ln = sys.argv
 
     root = ctk.CTk()
-    root.withdraw()              # <- ocultas la ventana raíz
-    open_dashboard(int(uid), fn, ln, parent=root)
+    root.withdraw()   # ocultas la raíz
+
+    # ahora open_dashboard devuelve la ventana hija con su propio protocol
+    dashboard = open_dashboard(int(uid), fn, ln, parent=root)
+
     root.mainloop()
