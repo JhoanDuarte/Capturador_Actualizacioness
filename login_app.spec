@@ -5,7 +5,7 @@ import os
 block_cipher = None
 
 # 1) Todas las DLL de GTK/Cairo
-gtk_bins = glob.glob(r'C:\Program Files\GTK3-Runtime Win64\bin\*.dll')
+gtk_bins = glob.glob(r'C:\Users\pysnepsdbs08\gtk3-runtime\bin\*.dll')
 gtk_bins.append(
     r'C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\DLLs\unicodedata.pyd'
 )

@@ -2141,7 +2141,7 @@ def exportar_paquete(root, conn):
               CONVERT(int, d.CANTIDAD)                     AS CANTIDAD,
               CONVERT(int, d.VLR_UNITARIO)                 AS VLR_UNITARIO,
               t.DIAGNOSTICO                                AS DIAGNOSTICO,
-              CONVERT(varchar(10), GETDATE(), 103)         AS CreatedOn,
+               CONVERT(varchar(10), t.CreatedOn, 103)      AS CreatedOn,
               u2.NUM_DOC                                   AS ModifiedBy,
               td.NAME                                      AS TipoDocumento,
               a.NUM_DOC                                    AS NumeroDocumento,
