@@ -73,8 +73,7 @@ def cargar_paquete(root, conn):
     # 1) Definir encabezados que esperamos
     expected_headers = {
         "RADICADO", "NIT", "RAZON_SOCIAL", "FACTURA",
-        "VALOR_FACTURA", "FECHA FACTURA", "FECHA RADICACION",
-        "TIPO DOC", "NUM DOC",
+        "VALOR_FACTURA", "FECHA RADICACION",
         "ESTADO_FACTURA", "IMAGEN",
         "RADICADO_IMAGEN", "LINEA", "ID ASIGNACION",
         "ESTADO PYS", "OBSERVACION PYS", "LINEA PYS",
@@ -159,15 +158,15 @@ def cargar_paquete(root, conn):
             )
             return
 
-    # 6) Calcular NUM_PAQUETE
+    # 6) Calcular NUM_PAQUETE → tomo el mayor de TODOS los registros
     cur = conn.cursor()
-    try:
-        cur.execute("SELECT MAX(NUM_PAQUETE) FROM ASIGNACION_TIPIFICACION WHERE STATUS_ID = 1")
-        ultimo = cur.fetchone()[0] or 0
-    except:
-        traceback.print_exc()
-        ultimo = 0
+    cur.execute("SELECT ISNULL(MAX(NUM_PAQUETE), 0) FROM ASIGNACION_TIPIFICACION")
+    ultimo = cur.fetchone()[0]   # si no hay ninguno, devuelve 0
     NUM_PAQUETE = ultimo + 1
+
+    # DEBUG: imprimo en consola para verificar
+    print(f"[DEBUG] Nuevo NUM_PAQUETE → {NUM_PAQUETE}")
+
 
     # 7) Activar IDENTITY_INSERT
     cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION ON;")
@@ -195,10 +194,20 @@ def cargar_paquete(root, conn):
             razon          = str(row["RAZON_SOCIAL"])
             factura        = str(row["FACTURA"])
             valor_factura  = int(row["VALOR_FACTURA"])
-            fecha_factura  = row["FECHA FACTURA"]
+            fecha_factura = None
+            if "FECHA FACTURA" in df.columns:
+                v = row["FECHA FACTURA"]
+                fecha_factura = None if pd.isna(v) else str(v)
+            num_doc = None
+            tipo_doc_id = None
+            if "TIPO DOC" in df.columns:
+                v = row["TIPO DOC"]
+                tipo_doc_id = None if pd.isna(v) else str(v)
+            num_doc = None
+            if "NUM DOC" in df.columns:
+                v = row["NUM DOC"]
+                num_doc = None if pd.isna(v) else int(v)
             fecha_rad      = row["FECHA RADICACION"]
-            tipo_doc_id    = str(row["TIPO DOC"])
-            num_doc        = int(row["NUM DOC"])
             estado_factura = str(row.get("ESTADO_FACTURA","")).strip() or None
             imagen         = str(row.get("IMAGEN","")).strip() or None
 
@@ -216,8 +225,8 @@ def cargar_paquete(root, conn):
 
             params_list.append((
                 radicado, nit, razon, factura, valor_factura,
-                fecha_factura, fecha_rad, tipo_doc_id,
-                num_doc, estado_factura, imagen,
+                fecha_factura, fecha_rad, tipo_doc_id, num_doc,
+                estado_factura, imagen,
                 rad_img, linea, id_asig, est_pys,
                 obs_pys, linea_pys, rangos, def_col,
                 NUM_PAQUETE,
@@ -274,13 +283,13 @@ def cargar_paquete(root, conn):
             anchor="w", padx=20, pady=2
         )
 
-    def guardar_campos():
+    def guardar_campos(paquete=NUM_PAQUETE):
         cur2 = conn.cursor()
         for campo, var in vars_chk.items():
             if var.get():
                 cur2.execute(
                     "INSERT INTO PAQUETE_CAMPOS (NUM_PAQUETE, campo) VALUES (%s, %s)",
-                    (NUM_PAQUETE, campo)
+                    (paquete, campo)
                 )
         conn.commit()
         cur2.close()
@@ -1134,9 +1143,14 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         nonlocal dynamic_row, dynamic_col
         dv = {}
         current_frames = []
+        
+        skip_obs = len(detail_vars) >= 1
 
         for campo, icon_url in DETAIL_ICONS.items():
             if campo not in campos_paquete:
+                continue
+            
+            if campo == 'OBSERVACION' and skip_obs:
                 continue
 
             # 1) Crear y posicionar el frame del campo
@@ -1148,7 +1162,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             default = '0' if campo == 'COPAGO' else ''
             var = tk.StringVar(master=frm, value=default)
             lbl_err = ctk.CTkLabel(frm, text='', text_color='red')
-
+            
             # 3) Crear el widget según el tipo de campo
             if campo == 'AUTORIZACION':
                 def only_digits_len(P):
@@ -1272,6 +1286,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         detail_vars.append(dv)
         service_frames.append(current_frames)
 
+        if len(service_frames) > 1:
+            btn_del.configure(state='normal')
 
 
     if any(c in campos_paquete for c in DETAIL_ICONS):
@@ -1281,7 +1297,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             
             nonlocal dynamic_row, dynamic_col
 
-            if not service_frames:
+            if len(service_frames) <= 1:
                 return  # nada que eliminar
 
             # Sacamos el último bloque de frames y lo destruimos
@@ -1299,6 +1315,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             while dynamic_col < 0:
                 dynamic_row -= 1
                 dynamic_col += 3
+
+            if len(service_frames) <= 1:
+                btn_del.configure(state='disabled')
 
     # -----------------------------
     # Validar y guardar en BD
@@ -1540,7 +1559,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         compound="left",
         fg_color="#dc3545",
         hover_color="#c82333",
-        command=remove_service_block
+        command=remove_service_block,
+        state='disabled'
     )
     btn_del.pack(side='left', expand=True, fill='x', padx=5)
 
