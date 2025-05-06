@@ -1752,7 +1752,7 @@ def ver_progreso(root, conn):
             t.fecha_creacion     AS CreatedOn,
             u.FIRST_NAME + ' ' + u.LAST_NAME          AS ModifiedBy,
             td.NAME                                   AS TipoDocumento,
-            a.NUM_DOC                                 AS NumeroDocumento,
+            t.NUM_DOC                                 AS NumeroDocumento,
             CONVERT(int, d.COPAGO)                    AS CM_COPAGO
         FROM ASIGNACION_TIPIFICACION a
         JOIN TIPIFICACION t         ON t.ASIGNACION_ID   = a.RADICADO
