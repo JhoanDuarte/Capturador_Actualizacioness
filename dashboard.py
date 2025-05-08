@@ -1044,15 +1044,35 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
         # Validación al perder foco
         def val_tipo(e=None):
-            if not var_tipo.get().strip():
+            nombre = var_tipo.get().strip().upper()
+
+            # 1) Obligatorio
+            if not nombre:
                 entry_tipo.configure(border_color='red', border_width=2)
                 lbl_err_td.configure(text='Tipo de documento obligatorio')
                 return False
-            else:
-                entry_tipo.configure(border_color='#2b2b2b', border_width=1)
-                lbl_err_td.configure(text='')
-                return True
+
+            # 2) Verificar existencia en la base
+            cur_chk = conn.cursor()
+            cur_chk.execute(
+                "SELECT COUNT(*) FROM TIPO_DOC WHERE UPPER(NAME) = %s",
+                (nombre,)
+            )
+            existe = cur_chk.fetchone()[0] > 0
+            cur_chk.close()
+
+            if not existe:
+                entry_tipo.configure(border_color='red', border_width=2)
+                lbl_err_td.configure(text='Tipo de documento no existe')
+                return False
+
+            # 3) Todo OK
+            entry_tipo.configure(border_color='#2b2b2b', border_width=1)
+            lbl_err_td.configure(text='')
+            return True
+
         entry_tipo.bind('<FocusOut>', val_tipo)
+
 
         field_vars['TIPO_DOC_ID'] = var_tipo
         widgets['TIPO_DOC_ID']    = entry_tipo
@@ -1142,15 +1162,26 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
         # Validación al perder foco (primero on_select, luego val)
         def val_diag(e=None):
-            on_select()
-            if not var_diag.get().strip():
+            on_select()  # extrae el código a var_diag
+
+            codigo = var_diag.get().strip().upper()
+
+            # 1) Obligatorio
+            if not codigo:
                 entry_diag.configure(border_color='red', border_width=2)
                 lbl_err_diag.configure(text='Diagnóstico obligatorio')
                 return False
-            else:
-                entry_diag.configure(border_color='#2b2b2b', border_width=1)
-                lbl_err_diag.configure(text='')
-                return True
+
+            # 2) Verificar que el código esté en dx_map
+            if codigo not in dx_map:
+                entry_diag.configure(border_color='red', border_width=2)
+                lbl_err_diag.configure(text='Código de diagnóstico no existe')
+                return False
+
+            # 3) Todo OK
+            entry_diag.configure(border_color='#2b2b2b', border_width=1)
+            lbl_err_diag.configure(text='')
+            return True
 
         entry_diag.bind('<FocusOut>', val_diag)
 
@@ -2780,18 +2811,20 @@ def ver_progreso(root, conn):
             "  a.RADICADO, "
             "  t.FECHA_SERVICIO, "
             "  d.AUTORIZACION, "
-            "  d.CODIGO_SERVICIO   AS COD_SERVICIO, "
+            "  d.CODIGO_SERVICIO, "
             "  d.CANTIDAD, "
             "  d.VLR_UNITARIO, "
             "  t.DIAGNOSTICO, "
             "  t.fecha_creacion    AS CreatedOn, "
             " CONCAT(u.FIRST_NAME, ' ', u.LAST_NAME, ' - ', CAST(u.NUM_DOC AS varchar(20))) AS ModifiedBy, "
+            "  td.NAME           AS TipoDocumento, "
             "  t.NUM_DOC           AS NumeroDocumento, "
             "  d.COPAGO            AS CM_COPAGO, "
             "  d.OBSERVACION, "
             "  s.NAME              AS ESTADO "
             "FROM ASIGNACION_TIPIFICACION a "
             "JOIN TIPIFICACION t          ON t.ASIGNACION_ID     = a.RADICADO "
+            "JOIN TIPO_DOC td          ON t.TIPO_DOC_ID     = td.ID "
             "JOIN USERS u          ON t.USER_ID     = u.ID "
             "JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID   = t.ID "
             "JOIN STATUS s                ON s.ID                = a.STATUS_ID "
