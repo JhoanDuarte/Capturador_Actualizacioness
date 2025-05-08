@@ -44,7 +44,7 @@ UPDATE_JSON_URL = "https://raw.githubusercontent.com/JhoanDuarte/Capturador_Actu
 try:
     from version import __version__ as local_version
 except ImportError:
-    local_version = "1.0.9"  # Si no hay versión, se forzará la actualización
+    local_version = "1.1.0"  # Si no hay versión, se forzará la actualización
 
 import os
 import sys

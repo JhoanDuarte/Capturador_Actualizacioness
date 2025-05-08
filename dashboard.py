@@ -1407,6 +1407,14 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
                     ok = False
                 else:
                     w.configure(border_color='#2b2b2b', border_width=1)
+                    
+            if 'TIPO_DOC_ID' in field_vars:
+                # val_tipo() retorna False si no existe en la tabla
+                if not val_tipo():
+                    ok = False
+            if 'DIAGNOSTICO' in field_vars:
+                if not val_diag():
+                    ok = False
 
             # Detalle: si no hay observación en ese bloque, validar sus campos
             for dv in detail_vars:
@@ -2052,14 +2060,32 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
         # Validación al perder foco
         def val_tipo(e=None):
-            if not var_tipo.get().strip():
+            nombre = var_tipo.get().strip().upper()
+
+            # 1) Obligatorio
+            if not nombre:
                 entry_tipo.configure(border_color='red', border_width=2)
                 lbl_err_td.configure(text='Tipo de documento obligatorio')
                 return False
-            else:
-                entry_tipo.configure(border_color='#2b2b2b', border_width=1)
-                lbl_err_td.configure(text='')
-                return True
+
+            # 2) Verificar existencia en la base
+            cur_chk = conn.cursor()
+            cur_chk.execute(
+                "SELECT COUNT(*) FROM TIPO_DOC WHERE UPPER(NAME) = %s",
+                (nombre,)
+            )
+            existe = cur_chk.fetchone()[0] > 0
+            cur_chk.close()
+
+            if not existe:
+                entry_tipo.configure(border_color='red', border_width=2)
+                lbl_err_td.configure(text='Tipo de documento no existe')
+                return False
+
+            # 3) Todo OK
+            entry_tipo.configure(border_color='#2b2b2b', border_width=1)
+            lbl_err_td.configure(text='')
+            return True
         entry_tipo.bind('<FocusOut>', val_tipo)
 
         field_vars['TIPO_DOC_ID'] = var_tipo
@@ -2150,15 +2176,26 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
         # Validación al perder foco (primero on_select, luego val)
         def val_diag(e=None):
-            on_select()
-            if not var_diag.get().strip():
+            on_select()  # extrae el código a var_diag
+
+            codigo = var_diag.get().strip().upper()
+
+            # 1) Obligatorio
+            if not codigo:
                 entry_diag.configure(border_color='red', border_width=2)
                 lbl_err_diag.configure(text='Diagnóstico obligatorio')
                 return False
-            else:
-                entry_diag.configure(border_color='#2b2b2b', border_width=1)
-                lbl_err_diag.configure(text='')
-                return True
+
+            # 2) Verificar que el código esté en dx_map
+            if codigo not in dx_map:
+                entry_diag.configure(border_color='red', border_width=2)
+                lbl_err_diag.configure(text='Código de diagnóstico no existe')
+                return False
+
+            # 3) Todo OK
+            entry_diag.configure(border_color='#2b2b2b', border_width=1)
+            lbl_err_diag.configure(text='')
+            return True
 
         entry_diag.bind('<FocusOut>', val_diag)
 
@@ -2384,6 +2421,14 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                     ok = False
                 else:
                     w.configure(border_color='#2b2b2b', border_width=1)
+                    
+            if 'TIPO_DOC_ID' in field_vars:
+                # val_tipo() retorna False si no existe en la tabla
+                if not val_tipo():
+                    ok = False
+            if 'DIAGNOSTICO' in field_vars:
+                if not val_diag():
+                    ok = False
 
             # Detalle: si no hay observación en ese bloque, validar sus campos
             for dv in detail_vars:
