@@ -1,4 +1,5 @@
 import os
+import ssl
 import sys
 import csv
 
@@ -29,6 +30,10 @@ from PIL import Image
 import pandas as pd
 import requests
 from tkcalendar import DateEntry
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, PageBreak, Paragraph
+from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
 
 # — Módulos propios —
 from db_connection import conectar_sql_server
@@ -66,7 +71,6 @@ def load_icon_from_url(url, size):
 
 def cargar_paquete(root, conn):
     import traceback
-    import pandas as pd
     import tkinter as tk
     from tkinter import filedialog, messagebox
     import customtkinter as ctk
@@ -2600,73 +2604,88 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         b.bind("<Return>", lambda e, btn=b: btn.invoke())
         
 def ver_progreso(root, conn):
-    # — Funciones auxiliares —
+    # — Auxiliar para parsear fechas de texto —
     def parse_fecha(s):
         try:
             return datetime.datetime.strptime(s, "%d/%m/%Y").date()
         except:
             return None
 
-    def _filtrar_est(event=None):
-        term = buscar_est.get().lower()
-        for est in estados:
-            w = estado_checks[f"{est}_widget"]
-            w.pack_forget()
-            if term in est.lower():
-                w.pack(anchor="w", pady=2)
-
-    def _marcar_est(val):
-        for est in estados:
-            estado_checks[est].set(val)
-
-    def _filtrar_usr(event=None):
-        term = buscar_usr.get().lower()
-        for usr in usuarios:
-            w = user_checks[f"{usr}_widget"]
-            w.pack_forget()
-            if term in usr.lower():
-                w.pack(anchor="w", pady=2)
-
-    def _marcar_usr(val):
-        for usr in usuarios:
-            user_checks[usr].set(val)
-
-    def cargar_tabs():
-        # Validar paquete seleccionado
+    # — Construye WHERE y parámetros según filtros de UI —
+    def construir_filtros():
         try:
             pkg = int(pkg_var.get())
         except ValueError:
             messagebox.showwarning("Selección inválida", "Selecciona un paquete válido.")
-            return
-
-        d1 = fecha_desde.get_date() if var_fecha_desde.get().strip() else None
-        d2 = fecha_hasta.get_date() if var_fecha_hasta.get().strip() else None
+            return None, None
 
         filtros = ["a.NUM_PAQUETE = %s"]
         params = [pkg]
 
-        if d1:
-            filtros.append("CAST(t.fecha_creacion AS DATE) >= %s")
+        tipo = var_tipo_paquete.get().strip()
+        if tipo:
+            filtros.append("a.TIPO_PAQUETE = %s")
+            params.append(tipo)
+
+        if var_fecha_desde.get().strip():
+            d1 = fecha_desde.get_date()
+            filtros.append("CONVERT(date, t.fecha_creacion, 103) >= %s")
             params.append(d1)
-        if d2:
-            filtros.append("CAST(t.fecha_creacion AS DATE) <= %s")
+        if var_fecha_hasta.get().strip():
+            d2 = fecha_hasta.get_date()
+            filtros.append("CONVERT(date, t.fecha_creacion, 103) <= %s")
             params.append(d2)
 
-        sel_est = [e for e in estados if estado_checks[e].get()]
+        sel_est = [e for e, v in estado_vars.items() if v.get()]
         if 0 < len(sel_est) < len(estados):
-            ph = ",".join("%s" for _ in sel_est)
+            ph = ", ".join("%s" for _ in sel_est)
             filtros.append(f"s.NAME IN ({ph})")
             params.extend(sel_est)
 
-        sel_usr = [u for u in usuarios if user_checks[u].get()]
+        sel_usr = [u for u, v in user_vars.items() if v.get()]
         if 0 < len(sel_usr) < len(usuarios):
-            ph = ",".join("%s" for _ in sel_usr)
+            ph = ", ".join("%s" for _ in sel_usr)
             filtros.append(f"(u.FIRST_NAME + ' ' + u.LAST_NAME) IN ({ph})")
             params.extend(sel_usr)
 
         where_clause = " AND ".join(filtros)
+        return where_clause, tuple(params)
 
-        # --- Pestaña Por Estado ---
+    # — Filtrar/mostrar solo checks de estado coincidentes —
+    def _filtrar_est(event=None):
+        term = buscar_est.get().lower()
+        for est in estados:
+            cb = estado_checks[est]
+            cb.pack_forget()
+            if term in est.lower():
+                cb.pack(anchor="w", pady=2)
+
+    # — Marcar/desmarcar todos los estados —
+    def _marcar_est(val):
+        for var in estado_vars.values():
+            var.set(val)
+
+    # — Filtrar/mostrar solo checks de usuario coincidentes —
+    def _filtrar_usr(event=None):
+        term = buscar_usr.get().lower()
+        for usr in usuarios:
+            cb = user_checks[usr]
+            cb.pack_forget()
+            if term in usr.lower():
+                cb.pack(anchor="w", pady=2)
+
+    # — Marcar/desmarcar todos los usuarios —
+    def _marcar_usr(val):
+        for var in user_vars.values():
+            var.set(val)
+
+    # — Carga datos en las dos pestañas según filtros —
+    def actualizar_tabs():
+        where, params = construir_filtros()
+        if where is None:
+            return
+
+        # — Pestaña "Por Estado" —
         frame1 = tabs.tab("Por Estado")
         for w in frame1.winfo_children():
             w.destroy()
@@ -2677,17 +2696,15 @@ def ver_progreso(root, conn):
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
             "JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
             "JOIN USERS u ON t.USER_ID = u.ID "
-            f"WHERE {where_clause} "
-            "GROUP BY s.NAME "
-            "ORDER BY s.NAME"
+            f"WHERE {where} GROUP BY s.NAME ORDER BY s.NAME"
         )
-        cur.execute(sql1, tuple(params))
+        cur.execute(sql1, params)
         for i, (est, cnt) in enumerate(cur.fetchall()):
             ctk.CTkLabel(frame1, text=est).grid(row=i, column=0, sticky="w", padx=5, pady=2)
             ctk.CTkLabel(frame1, text=cnt).grid(row=i, column=1, sticky="e", padx=5, pady=2)
         cur.close()
 
-        # --- Pestaña Por Usuario ---
+        # — Pestaña "Por Usuario" —
         frame2 = tabs.tab("Por Usuario")
         for w in frame2.winfo_children():
             w.destroy()
@@ -2701,11 +2718,9 @@ def ver_progreso(root, conn):
             "JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
             "JOIN USERS u ON t.USER_ID = u.ID "
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
-            f"WHERE {where_clause} "
-            "GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME "
-            "ORDER BY USUARIO"
+            f"WHERE {where} GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME ORDER BY USUARIO"
         )
-        cur.execute(sql2, tuple(params))
+        cur.execute(sql2, params)
         headers = ["ID", "USUARIO", "PENDIENTES", "PROCESADOS", "CON_OBS"]
         for j, h in enumerate(headers):
             ctk.CTkLabel(frame2, text=h).grid(row=0, column=j, padx=5, pady=4, sticky="w")
@@ -2713,139 +2728,218 @@ def ver_progreso(root, conn):
             for j, val in enumerate(row):
                 ctk.CTkLabel(frame2, text=val).grid(row=i, column=j, padx=5, pady=2, sticky="w")
         cur.close()
+        
+    def exportar_excel(path, headers, rows):
+        import pandas as pd
+        # 1) Crear DataFrame
+        df = pd.DataFrame(rows, columns=headers)
 
+        # 2) Escribir con XlsxWriter
+        with pd.ExcelWriter(path, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Datos')
+            workbook  = writer.book
+            worksheet = writer.sheets['Datos']
+
+            # 3) Definir formatos
+            header_fmt = workbook.add_format({
+                'bold': True,
+                'border': 2,             # borde grueso
+                'align': 'center',       # centrado horizontal
+                'valign': 'vcenter',     # centrado vertical
+            })
+            data_fmt = workbook.add_format({
+                'border': 1,             # borde fino
+                'align': 'center',
+                'valign': 'vcenter',
+            })
+
+            # 4) Ajustar anchos y aplicar formatos
+            for col_num, column in enumerate(df.columns):
+                # ancho automático basado en contenido
+                max_len = max(
+                    df[column].astype(str).map(len).max(),
+                    len(column)
+                ) + 2
+                # set_column aplica data_fmt a todas las celdas de la columna
+                worksheet.set_column(col_num, col_num, max_len, data_fmt)
+                # reescribimos el encabezado con header_fmt
+                worksheet.write(0, col_num, column, header_fmt)
+
+            # 5) (Opcional) Filtros automáticos
+            worksheet.autofilter(0, 0, len(df), len(df.columns)-1)
+
+            
     def exportar():
-        # 1) Validar paquete y filtros (idéntico a cargar_tabs)
-        try:
-            pkg = int(pkg_var.get())
-        except ValueError:
-            messagebox.showwarning("Selección inválida", "Selecciona un paquete válido.")
+        where, params = construir_filtros()
+        if where is None:
             return
 
-        d1 = parse_fecha(fecha_desde.get().strip())
-        d2 = parse_fecha(fecha_hasta.get().strip())
+        # — 1) SQL que incluye solo las columnas requeridas —
+        sql_export = (
+            "SELECT "
+            "  a.RADICADO, "
+            "  t.FECHA_SERVICIO, "
+            "  d.AUTORIZACION, "
+            "  d.CODIGO_SERVICIO   AS COD_SERVICIO, "
+            "  d.CANTIDAD, "
+            "  d.VLR_UNITARIO, "
+            "  t.DIAGNOSTICO, "
+            "  t.fecha_creacion    AS CreatedOn, "
+            " CONCAT(u.FIRST_NAME, ' ', u.LAST_NAME, ' - ', CAST(u.NUM_DOC AS varchar(20))) AS ModifiedBy, "
+            "  t.NUM_DOC           AS NumeroDocumento, "
+            "  d.COPAGO            AS CM_COPAGO, "
+            "  d.OBSERVACION, "
+            "  s.NAME              AS ESTADO "
+            "FROM ASIGNACION_TIPIFICACION a "
+            "JOIN TIPIFICACION t          ON t.ASIGNACION_ID     = a.RADICADO "
+            "JOIN USERS u          ON t.USER_ID     = u.ID "
+            "JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID   = t.ID "
+            "JOIN STATUS s                ON s.ID                = a.STATUS_ID "
+            f"WHERE {where}"
+        )
 
-        filtros = ["a.NUM_PAQUETE = %s"]
-        params  = [pkg]
-
-        if d1:
-            filtros.append("t.fecha_creacion >= %s"); params.append(d1)
-        if d2:
-            filtros.append("t.fecha_creacion <= %s"); params.append(d2)
-
-        sel_est = [e for e in estados if estado_checks[e].get()]
-        if 0 < len(sel_est) < len(estados):
-            ph = ",".join("%s" for _ in sel_est)
-            filtros.append(f"s.NAME IN ({ph})"); params.extend(sel_est)
-
-        sel_usr = [u for u in usuarios if user_checks[u].get()]
-        if 0 < len(sel_usr) < len(usuarios):
-            ph = ",".join("%s" for _ in sel_usr)
-            filtros.append(f"(u.FIRST_NAME + ' ' + u.LAST_NAME) IN ({ph})"); params.extend(sel_usr)
-
-        where_clause = " AND ".join(filtros)
-
-        # 2) Diálogo de guardado
+        # — 2) Diálogo para elegir ruta y extensión —
         path = filedialog.asksaveasfilename(
-            parent=win,
+            title="Guardar archivo",
+            initialfile="reporte",
             defaultextension=".csv",
-            filetypes=[("CSV","*.csv"),("Todos","*.*")]
+            filetypes=[
+                ("CSV (texto)", "*.csv"),
+                ("TXT (texto)", "*.txt"),
+                ("Excel con estilo", "*.xlsx"),
+                ("PDF", "*.pdf"),
+            ],
         )
         if not path:
             return
+        ext = path.rsplit('.', 1)[-1].lower()
 
-        # 3) SQL unificado (mismos campos que en exportar_paquete)
-        sql = f"""
-        SELECT
-            a.RADICADO                                AS RADICADO,
-            CONVERT(varchar(10), t.FECHA_SERVICIO,103) AS FECHA_SERVICIO,
-            d.AUTORIZACION                            AS AUTORIZACION,
-            d.CODIGO_SERVICIO                         AS COD_SERVICIO,
-            CONVERT(int, d.CANTIDAD)                  AS CANTIDAD,
-            CONVERT(int, d.VLR_UNITARIO)              AS VLR_UNITARIO,
-            t.DIAGNOSTICO                             AS DIAGNOSTICO,
-            t.fecha_creacion     AS CreatedOn,
-            u.FIRST_NAME + ' ' + u.LAST_NAME          AS ModifiedBy,
-            td.NAME                                   AS TipoDocumento,
-            t.NUM_DOC                                 AS NumeroDocumento,
-            CONVERT(int, d.COPAGO)                    AS CM_COPAGO
-        FROM ASIGNACION_TIPIFICACION a
-        JOIN TIPIFICACION t         ON t.ASIGNACION_ID   = a.RADICADO
-        JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID = t.ID
-        JOIN USERS u                ON u.ID              = t.USER_ID
-        JOIN TIPO_DOC td            ON td.ID             = t.TIPO_DOC_ID
-        JOIN STATUS s               ON s.ID              = a.STATUS_ID
-        WHERE {where_clause}
-        ORDER BY a.RADICADO, t.FECHA_SERVICIO
-        """
+        # — 3) Ejecutar consulta una sola vez —
+        cur = conn.cursor()
+        cur.execute(sql_export, params)
+        rows = cur.fetchall()
+        headers = [col[0] for col in cur.description]
+        cur.close()
 
-        # 4) Ejecuta y vuelca CSV
-        cur2 = conn.cursor()
-        cur2.execute(sql, tuple(params))
-        rows    = cur2.fetchall()
-        headers = [col[0] for col in cur2.description]
-        cur2.close()
+        # — 4) Rutas de exportación —
+        if ext in ("csv", "txt"):
+            sep = ',' if ext=="csv" else '\t'
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f, delimiter=sep)
+                writer.writerow(headers)
+                writer.writerows(rows)
+            messagebox.showinfo("Exportar", f"{len(rows)} filas exportadas en {ext.upper()}:\n{path}")
 
-        import csv
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-            writer.writerows(rows)
+        elif ext == "xlsx":
+            exportar_excel(path, headers, rows)
+            messagebox.showinfo("Exportar", f"{len(rows)} filas exportadas en Excel:\n{path}")
 
-        messagebox.showinfo("Exportar", f"{len(rows)} filas exportadas:\n{path}")
+        elif ext == "pdf":
+            exportar_pdf(path, headers, rows)
+            messagebox.showinfo("Exportar", f"{len(rows)} filas exportadas en PDF:\n{path}")
 
-    # — Crear ventana y marco —
+
+    def exportar_pdf(path, headers, rows):
+        # Documento horizontal, márgenes reducidos
+        doc = SimpleDocTemplate(
+            path,
+            pagesize=landscape(A4),
+            leftMargin=10,
+            rightMargin=10,
+            topMargin=10,
+            bottomMargin=10
+        )
+        styles = getSampleStyleSheet()
+        data = [headers] + [list(r) for r in rows]
+
+        # Estilo de tabla común
+        table_style = TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#D3D3D3')),
+            ('TEXTCOLOR',  (0,0), (-1,0), colors.black),
+            ('ALIGN',      (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN',     (0,0), (-1,-1), 'TOP'),
+            ('GRID',       (0,0), (-1,-1), 0.5, colors.grey),
+            ('FONTSIZE',   (0,0), (-1,-1), 7),  # Fuente pequeña para que quepa
+            ('BOTTOMPADDING', (0,0), (-1,0), 6),
+            ('TOPPADDING',    (0,0), (-1,0), 6),
+        ])
+
+        # ¿Cuántas columnas caben en una página?
+        total_width = doc.width
+        min_col_width = 40  # puntos mínimos por columna
+        max_cols_per_page = max(1, int(total_width // min_col_width))
+
+        elements = []
+        if len(headers) > max_cols_per_page:
+            # Partir en “páginas” de columnas
+            for start in range(0, len(headers), max_cols_per_page):
+                end = start + max_cols_per_page
+                chunk_headers = headers[start:end]
+                chunk_rows = [row[start:end] for row in rows]
+                chunk_data = [chunk_headers] + chunk_rows
+
+                colW = total_width / len(chunk_headers)
+                tbl = Table(chunk_data, colWidths=[colW]*len(chunk_headers), repeatRows=1)
+                tbl.setStyle(table_style)
+                elements.append(tbl)
+                elements.append(PageBreak())
+        else:
+            # Una sola tabla
+            colW = total_width / len(headers)
+            tbl = Table(data, colWidths=[colW]*len(headers), repeatRows=1)
+            tbl.setStyle(table_style)
+            elements.append(tbl)
+
+        doc.build(elements)
+
+    # — Creación de ventana principal y layout de filtros/pestañas —
     win = ctk.CTkToplevel(root)
     win.title("Ver Progreso de Paquetes")
-    win.geometry("1000x700")
+    win.geometry("1150x700")
     win.grab_set()
-    win.protocol("WM_DELETE_WINDOW", lambda w=win: safe_destroy(w))
+    win.protocol("WM_DELETE_WINDOW", lambda: safe_destroy(win))
 
     topfrm = ctk.CTkFrame(win, fg_color="transparent")
     topfrm.pack(fill="x", padx=20, pady=(20, 0))
 
-    # — Paquete y Fechas —
+    # Paquete
     cur = conn.cursor()
     cur.execute("SELECT DISTINCT NUM_PAQUETE FROM ASIGNACION_TIPIFICACION ORDER BY NUM_PAQUETE")
-    paquetes = [str(r[0]) for r in cur.fetchall()]
+    paquetes = [str(r[0]) for r in cur.fetchall()] or ["0"]
     cur.close()
-    if not paquetes:
-        paquetes = ["0"]
     pkg_var = tk.StringVar(value=paquetes[0])
-    var_fecha_desde = tk.StringVar(value="")
-    var_fecha_hasta = tk.StringVar(value="")
     ctk.CTkLabel(topfrm, text="Paquete:").grid(row=0, column=0, sticky="w")
-    ctk.CTkOptionMenu(topfrm, values=paquetes, variable=pkg_var, width=80) \
-        .grid(row=0, column=1, sticky="w", padx=(0,20))
+    ctk.CTkOptionMenu(topfrm, values=paquetes, variable=pkg_var, width=80).grid(row=0, column=1, padx=(0,20), sticky="w")
 
-    ctk.CTkLabel(topfrm, text="Desde:").grid(row=0, column=2, sticky="w")
-    fecha_desde = DateEntry(
-        topfrm,
-         width=12,
-         locale='es_CO',
-         date_pattern='dd/MM/yyyy',
-         textvariable=var_fecha_desde     # ← enlazado al StringVar
-    )
-    fecha_desde.grid(row=0, column=3, sticky="w", padx=(0,20))
+    # Tipo de paquete
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT TIPO_PAQUETE FROM ASIGNACION_TIPIFICACION ORDER BY TIPO_PAQUETE")
+    tipos_paquete = [r[0] or "" for r in cur.fetchall()]
+    cur.close()
+    var_tipo_paquete = tk.StringVar(value=tipos_paquete[0])
+    ctk.CTkLabel(topfrm, text="Tipo Paquete:").grid(row=0, column=2, sticky="w")
+    ctk.CTkOptionMenu(topfrm, values=tipos_paquete, variable=var_tipo_paquete, width=80).grid(row=0, column=3, padx=(0,20), sticky="w")
 
-    ctk.CTkLabel(topfrm, text="Hasta:").grid(row=0, column=4, sticky="w")
-    fecha_hasta = DateEntry(
-        topfrm,
-        width=12,
-        locale='es_CO',
-        date_pattern='dd/MM/yyyy',
-        textvariable=var_fecha_hasta     # ← enlazado al StringVar
-    )
-    fecha_hasta.grid(row=0, column=5, sticky="w", padx=(0,20))
-    
-    btn_clean_date = ctk.CTkButton(topfrm, text="Limpiar fechas", command=lambda: (var_fecha_desde.set(""), var_fecha_hasta.set("")), width=100)
-    btn_clean_date.grid(row=0, column=6, padx=(0,20))
-    btn_refresh = ctk.CTkButton(topfrm, text="Aplicar filtros", command=cargar_tabs, width=120)
-    btn_refresh.grid(row=0, column=7, padx=(0,20))
-    btn_export = ctk.CTkButton(topfrm, text="Exportar CSV", command=exportar, width=100)
-    btn_export.grid(row=0, column=8)
+    # Fechas
+    var_fecha_desde = tk.StringVar()
+    var_fecha_hasta = tk.StringVar()
+    ctk.CTkLabel(topfrm, text="Desde:").grid(row=0, column=4, sticky="w")
+    fecha_desde = DateEntry(topfrm, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_desde)
+    fecha_desde.grid(row=0, column=5, padx=(0,20), sticky="w")
+    fecha_desde.delete(0, 'end')
+    ctk.CTkLabel(topfrm, text="Hasta:").grid(row=0, column=6, sticky="w")
+    fecha_hasta = DateEntry(topfrm, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_hasta)
+    fecha_hasta.grid(row=0, column=7, padx=(0,20), sticky="w")
+    fecha_hasta.delete(0, 'end')
 
-    # — Estados con buscador y selección múltiple —
+    ctk.CTkButton(topfrm, text="Limpiar fechas", command=lambda: (var_fecha_desde.set(""), var_fecha_hasta.set("")), width=100).grid(row=0, column=8, padx=(0,20))
+    ctk.CTkButton(topfrm, text="Aplicar filtros", command=actualizar_tabs, width=120).grid(row=0, column=9, padx=(0,20))
+    ctk.CTkButton(topfrm,
+        text="Exportar",
+        command=exportar,
+        width=100
+    ).grid(row=0, column=10)
+    # Filtro de estados
     cur = conn.cursor()
     cur.execute("SELECT NAME FROM STATUS ORDER BY NAME")
     estados = [r[0] for r in cur.fetchall()]
@@ -2854,21 +2948,20 @@ def ver_progreso(root, conn):
     buscar_est = ctk.CTkEntry(topfrm, width=200, placeholder_text="Buscar estado...")
     buscar_est.grid(row=1, column=1, columnspan=3, sticky="w", padx=(0,20), pady=(20,5))
     buscar_est.bind("<KeyRelease>", _filtrar_est)
-    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_est(True), width=60) \
-        .grid(row=1, column=4, pady=(20,5), sticky="w")
-    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_est(False), width=60) \
-        .grid(row=1, column=5, pady=(20,5), sticky="w")
+    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=1, column=4, pady=(20,5), sticky="w")
+    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=1, column=5, pady=(20,5), sticky="w")
     estado_frame = ctk.CTkScrollableFrame(topfrm, width=250, height=120)
     estado_frame.grid(row=2, column=0, columnspan=6, sticky="w")
+    estado_vars = {}
     estado_checks = {}
     for est in estados:
         var = tk.BooleanVar(value=True)
         cb = ctk.CTkCheckBox(estado_frame, text=est, variable=var)
         cb.pack(anchor="w", pady=2)
-        estado_checks[est] = var
-        estado_checks[f"{est}_widget"] = cb
+        estado_vars[est] = var
+        estado_checks[est] = cb
 
-    # — Usuarios con buscador y selección múltiple —
+    # Filtro de usuarios
     cur = conn.cursor()
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
@@ -2877,32 +2970,31 @@ def ver_progreso(root, conn):
     buscar_usr = ctk.CTkEntry(topfrm, width=200, placeholder_text="Buscar usuario...")
     buscar_usr.grid(row=1, column=7, columnspan=2, sticky="w", pady=(20,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_usr(True), width=60) \
-        .grid(row=1, column=9, pady=(20,5), sticky="w", padx=(5,0))
-    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_usr(False), width=60) \
-        .grid(row=1, column=10, pady=(20,5), sticky="w", padx=(5,0))
+    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=1, column=9, pady=(20,5), sticky="w", padx=(5,0))
+    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=1, column=10, pady=(20,5), sticky="w", padx=(5,0))
     user_frame = ctk.CTkScrollableFrame(topfrm, width=250, height=120)
     user_frame.grid(row=2, column=6, columnspan=5, sticky="w")
+    user_vars = {}
     user_checks = {}
     for usr in usuarios:
         var = tk.BooleanVar(value=True)
         cb = ctk.CTkCheckBox(user_frame, text=usr, variable=var)
         cb.pack(anchor="w", pady=2)
-        user_checks[usr] = var
-        user_checks[f"{usr}_widget"] = cb
+        user_vars[usr] = var
+        user_checks[usr] = cb
 
-    # — Pestañas de resultados —
+    # Pestañas de resultados
     tabs = ctk.CTkTabview(win, width=760, height=440)
     tabs.pack(padx=20, pady=(10,20), fill="both", expand=True)
     tabs.add("Por Estado")
     tabs.add("Por Usuario")
     win._tabview = tabs
 
-    # Carga inicial
-    cargar_tabs()
+    # Carga inicial al abrir ventana
+    actualizar_tabs()
 
 
-def _cargar_tabs(win, conn, num_paquete):
+def actualizar_tabs(win, conn, num_paquete):
     tabs = win._tabview
 
     # -- Pestaña “Por Estado” --
@@ -3167,9 +3259,10 @@ def exportar_paquete(root, conn):
         ext = ".txt" if fmt == "TXT" else ".csv"
         sep = ";" if fmt == "TXT" else ","
         path = filedialog.asksaveasfilename(
-            parent=win,
-            defaultextension=ext,
-            filetypes=[("CSV","*.csv"),("Texto","*.txt")]
+            filetypes=[("CSV Files", "*.csv")],
+            defaultextension=".csv",
+            initialfile="reporte.csv",   
+            title="Guardar como CSV" 
         )
         if not path:
             return
