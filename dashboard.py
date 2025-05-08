@@ -1468,8 +1468,11 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             tipo_doc_id = None
 
         # Diagnóstico: si está vacío, usamos None para que SQL reciba NULL
-        raw = var_diag.get().strip().upper()
-        diag_code = raw if raw else None
+        if 'DIAGNOSTICO' in field_vars:
+            raw = field_vars['DIAGNOSTICO'].get().strip().upper()
+            diag_code = raw or None
+        else:
+            diag_code = None
 
         # --- 2) Insertar cabecera TIPIFICACION con USER_ID ---
         cur2.execute("""
@@ -2444,8 +2447,11 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             tipo_doc_id = None
 
         # Diagnóstico: si está vacío, usamos None para que SQL reciba NULL
-        raw = var_diag.get().strip().upper()
-        diag_code = raw if raw else None
+        if 'DIAGNOSTICO' in field_vars:
+            raw = field_vars['DIAGNOSTICO'].get().strip().upper()
+            diag_code = raw or None
+        else:
+            diag_code = None
 
         # --- 2) Insertar cabecera TIPIFICACION con USER_ID ---
         cur2.execute("""
