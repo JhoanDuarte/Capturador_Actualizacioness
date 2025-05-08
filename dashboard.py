@@ -28,6 +28,7 @@ import customtkinter as ctk  # sólo esto para CustomTkinter
 from PIL import Image
 import pandas as pd
 import requests
+from tkcalendar import DateEntry
 
 # — Módulos propios —
 from db_connection import conectar_sql_server
@@ -69,6 +70,20 @@ def cargar_paquete(root, conn):
     import tkinter as tk
     from tkinter import filedialog, messagebox
     import customtkinter as ctk
+    
+    # 0) Selección de Tipo de Paquete
+    sel = ctk.CTkToplevel(root)
+    sel.title("Seleccione Tipo de Paquete")
+    tipo_paquete_var = tk.StringVar(value="DIGITACION")
+    ctk.CTkLabel(sel, text="Tipo de Paquete:").pack(pady=10)
+    ctk.CTkOptionMenu(sel,
+        values=["DIGITACION", "CALIDAD"],
+        variable=tipo_paquete_var
+    ).pack(pady=5)
+    ctk.CTkButton(sel, text="Aceptar", command=sel.destroy).pack(pady=10)
+    sel.grab_set()
+    root.wait_window(sel)
+    tipo_paquete = tipo_paquete_var.get()
 
     # 1) Definir encabezados que esperamos
     expected_headers = {
@@ -228,7 +243,7 @@ def cargar_paquete(root, conn):
                 fecha_factura, fecha_rad, tipo_doc_id, num_doc,
                 estado_factura, imagen,
                 rad_img, linea, id_asig, est_pys,
-                obs_pys, linea_pys, rangos, def_col,
+                obs_pys, linea_pys, rangos, def_col,tipo_paquete,
                 NUM_PAQUETE,
             ))
         except Exception:
@@ -246,10 +261,11 @@ def cargar_paquete(root, conn):
            FECHA_FACTURA, FECHA_RADICACION, TIPO_DOC_ID,
            NUM_DOC, ESTADO_FACTURA, IMAGEN, RADICADO_IMAGEN,
            LINEA, ID_ASIGNACION, ESTADO_PYS, OBSERVACION_PYS,
-           LINEA_PYS, RANGOS, DEF, STATUS_ID, NUM_PAQUETE)
+           LINEA_PYS, RANGOS, DEF, TIPO_PAQUETE, STATUS_ID, NUM_PAQUETE)
         VALUES
-          (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-           %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
+      (%s, %s, %s, %s, %s, %s, %s, %s,
+       %s, %s, %s, %s, %s, %s, %s, %s,
+       %s, %s, %s, %s, 1, %s)
         """,
         params_list
     )
@@ -272,7 +288,7 @@ def cargar_paquete(root, conn):
     sel = ctk.CTkToplevel(root)
     sel.title(f"Paquete {NUM_PAQUETE}: Selecciona campos")
     campos = [
-        "FECHA_SERVICIO", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO",
+        "FECHA_SERVICIO", "FECHA_FINAL", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO",
         "AUTORIZACION", "CODIGO_SERVICIO", "CANTIDAD", "VLR_UNITARIO",
         "COPAGO", "OBSERVACION"
     ]
@@ -694,20 +710,29 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
     entry_factura_var  = tk.StringVar()
-    # 1) Carga paquete y campos
+
+    
+    # 1) Obtener el último paquete cargado con TIPO_PAQUETE = 'DIGITACION'
     cur = conn.cursor()
-    cur.execute("SELECT MAX(NUM_PAQUETE) FROM PAQUETE_CAMPOS")
+    cur.execute("""
+        SELECT MAX(NUM_PAQUETE)
+        FROM ASIGNACION_TIPIFICACION
+        WHERE UPPER(LTRIM(RTRIM(TIPO_PAQUETE))) = %s AND TIPO_PAQUETE = 'DIGITACION'
+    """, ("DIGITACION",))
     pkg = cur.fetchone()[0] or 0
-    cur.execute("SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE = %s", (pkg,))
-    campos_paquete = {r[0] for r in cur.fetchall()}
     cur.close()
+
+    
+    
 
     # 2) Asignación aleatoria
     cur = conn.cursor()
     cur.execute("""
         SELECT TOP 1 RADICADO, NIT, FACTURA
         FROM ASIGNACION_TIPIFICACION
-        WHERE STATUS_ID = 1 AND NUM_PAQUETE = %s
+        WHERE STATUS_ID = 1
+        AND NUM_PAQUETE = %s
+        AND TIPO_PAQUETE = 'DIGITACION'
         ORDER BY NEWID()
     """, (pkg,))
     row = cur.fetchone()
@@ -722,6 +747,11 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     cur.execute("UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s", (radicado,))
     conn.commit()
     cur.close()
+    
+    cur2 = conn.cursor()
+    cur2.execute("SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE = %s", (pkg,))
+    campos_paquete = {r[0] for r in cur2.fetchall()}
+    cur2.close()
 
     # 3) Ventana principal
     win = ctk.CTkToplevel(parent_root)
@@ -980,6 +1010,979 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
         # Posicionar en el layout
         place_fixed_field(frm)
+
+    if 'TIPO_DOC_ID' in campos_paquete:
+        frm = make_field('Tipo Doc:',
+                        'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/id-card.svg')
+        # Carga opciones
+        cur_td = conn.cursor()
+        cur_td.execute("SELECT NAME FROM TIPO_DOC")
+        opts_td = [r[0] for r in cur_td.fetchall()]
+        cur_td.close()
+
+        var_tipo = tk.StringVar()
+        # Trace: solo A–Z y uppercase
+        var_tipo.trace_add('write', lambda *_: var_tipo.set(
+            ''.join(ch for ch in var_tipo.get().upper() if 'A' <= ch <= 'Z')
+        ))
+
+        entry_tipo = AutocompleteEntry(frm, opts_td, width=300, textvariable=var_tipo)
+        entry_tipo.pack(fill='x', pady=(5,0))
+
+        # Forzar mayúsculas en KeyRelease
+        def to_upper_on_key(event, var=var_tipo):
+            var.set(var.get().upper())
+        entry_tipo.bind('<KeyRelease>', to_upper_on_key)
+
+        # Etiqueta de error
+        lbl_err_td = ctk.CTkLabel(frm, text='', text_color='red')
+        lbl_err_td.pack(fill='x', pady=(2,0))
+
+        # Validación al perder foco
+        def val_tipo(e=None):
+            if not var_tipo.get().strip():
+                entry_tipo.configure(border_color='red', border_width=2)
+                lbl_err_td.configure(text='Tipo de documento obligatorio')
+                return False
+            else:
+                entry_tipo.configure(border_color='#2b2b2b', border_width=1)
+                lbl_err_td.configure(text='')
+                return True
+        entry_tipo.bind('<FocusOut>', val_tipo)
+
+        field_vars['TIPO_DOC_ID'] = var_tipo
+        widgets['TIPO_DOC_ID']    = entry_tipo
+        place_fixed_field(frm)
+
+
+    if 'NUM_DOC' in campos_paquete:
+        frm = make_field('Num Doc:',
+                        'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/hashtag.svg')
+        var_num = tk.StringVar()
+        entry_num = ctk.CTkEntry(
+            frm, textvariable=var_num,
+            placeholder_text='Solo dígitos', width=300,
+            validate='key', validatecommand=(win.register(lambda s: s.isdigit()), '%S')
+        )
+        entry_num.pack(fill='x', pady=(5,0))
+
+        # Etiqueta de error
+        lbl_err_num = ctk.CTkLabel(frm, text='', text_color='red')
+        lbl_err_num.pack(fill='x', pady=(2,0))
+
+        # Validación al perder foco
+        def val_num(e=None):
+            if not var_num.get().strip():
+                entry_num.configure(border_color='red', border_width=2)
+                lbl_err_num.configure(text='Número de documento obligatorio')
+                return False
+            else:
+                entry_num.configure(border_color='#2b2b2b', border_width=1)
+                lbl_err_num.configure(text='')
+                return True
+        entry_num.bind('<FocusOut>', val_num)
+
+        field_vars['NUM_DOC'] = var_num
+        widgets['NUM_DOC']    = entry_num
+        place_fixed_field(frm)
+
+
+    if 'DIAGNOSTICO' in campos_paquete:
+        frm = make_field('Diagnóstico:',
+                        'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/stethoscope.svg')
+
+        # Carga mapa CIE10
+        cur_dx = conn.cursor()
+        cur_dx.execute("SELECT CODIGO, NOMBRE FROM TBL_CIE10")
+        dx_map = {cod: nombre for cod, nombre in cur_dx.fetchall()}
+        cur_dx.close()
+
+        opciones = [f"{cod} - {nombre}" for cod, nombre in dx_map.items()]
+
+        var_diag = tk.StringVar()
+        # Trace: filtrar y uppercase
+        var_diag.trace_add('write', lambda *_: var_diag.set(
+            ''.join(ch for ch in var_diag.get().upper() if ch.isalnum() or ch in (' ', '-', '_'))
+        ))
+
+        entry_diag = FullMatchAutocompleteEntry(
+            frm,
+            values=opciones,
+            width=300,
+            textvariable=var_diag
+        )
+        entry_diag.pack(fill='x', pady=(5,0))
+
+        # Etiqueta de error
+        lbl_err_diag = ctk.CTkLabel(frm, text='', text_color='red')
+        lbl_err_diag.pack(fill='x', pady=(2,0))
+
+        # Extraer código al seleccionar
+        def on_select(event=None):
+            text = var_diag.get()
+            if " - " in text:
+                cod, _ = text.split(" - ", 1)  # Extrae solo el código
+                var_diag.set(cod)  # Establece solo el código en el campo de entrada
+
+        # Asegurarse de que on_select siempre se dispare cuando se seleccione un ítem del desplegable
+        entry_diag.bind('<<ListboxSelect>>', on_select)  # Al seleccionar un ítem del desplegable
+
+        # También aseguramos que se ejecute al hacer "Enter" después de la selección
+        entry_diag.bind('<Return>', on_select)  # Al presionar Enter (si se usa para seleccionar)
+
+        # Asegurarse de que el valor se actualice también cuando el campo pierde el foco (cuando el usuario hace click fuera o tabula)
+        def on_focus_out(event):
+            on_select(event)
+
+        entry_diag.bind('<FocusOut>', on_focus_out)  # Actualiza al cambiar de campo (FocusOut)
+
+        # Validación al perder foco (primero on_select, luego val)
+        def val_diag(e=None):
+            on_select()
+            if not var_diag.get().strip():
+                entry_diag.configure(border_color='red', border_width=2)
+                lbl_err_diag.configure(text='Diagnóstico obligatorio')
+                return False
+            else:
+                entry_diag.configure(border_color='#2b2b2b', border_width=1)
+                lbl_err_diag.configure(text='')
+                return True
+
+        entry_diag.bind('<FocusOut>', val_diag)
+
+        field_vars['DIAGNOSTICO'] = var_diag
+        widgets['DIAGNOSTICO']    = entry_diag
+        place_fixed_field(frm)
+
+
+    # 9) Campos dinámicos
+    DETAIL_ICONS = {
+        'AUTORIZACION':    'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/file-invoice.svg',
+        'CODIGO_SERVICIO': 'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/tools.svg',
+        'CANTIDAD':        'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/list-ol.svg',
+        'VLR_UNITARIO':    'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/dollar-sign.svg',
+        'COPAGO':          'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/coins.svg',
+        'OBSERVACION':     'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/align-left.svg',
+    }
+    
+    dynamic_row = fixed_row + 1  # agrega estas variables ANTES de la función
+    dynamic_col = 0
+    
+    def add_service_block():
+        nonlocal dynamic_row, dynamic_col
+        dv = {}
+        current_frames = []
+        
+        skip_obs = len(detail_vars) >= 1
+
+        for campo, icon_url in DETAIL_ICONS.items():
+            if campo not in campos_paquete:
+                continue
+            
+            if campo == 'OBSERVACION' and skip_obs:
+                continue
+
+            # 1) Crear y posicionar el frame del campo
+            frm = make_field(campo.replace('_', ' ') + ':', icon_url)
+            frm.grid(row=dynamic_row, column=dynamic_col, padx=10, pady=8, sticky='nsew')
+            current_frames.append(frm)
+
+            # 2) Variable y etiqueta de error
+            default = '0' if campo == 'COPAGO' else ''
+            var = tk.StringVar(master=frm, value=default)
+            lbl_err = ctk.CTkLabel(frm, text='', text_color='red')
+            
+            # 3) Crear el widget según el tipo de campo
+            if campo == 'AUTORIZACION':
+                def only_digits_len(P):
+                    return P == "" or (P.isdigit() and len(P) <= 9)
+                vcmd_auth = (win.register(only_digits_len), '%P')
+
+                w = ctk.CTkEntry(
+                    frm, textvariable=var, width=300,
+                    placeholder_text='Solo 9 dígitos', validate='key',
+                    validatecommand=vcmd_auth
+                )
+                w.pack(fill='x', pady=(5, 0))
+                lbl_err.pack(fill='x', pady=(2, 8))
+
+                def val_autorizacion(e=None, var=var, w=w, lbl=lbl_err):
+                    txt = var.get().strip()
+                    if not txt:
+                        w.configure(border_color='red', border_width=2)
+                        lbl.configure(text='Autorización obligatoria')
+                        return False
+                    if len(txt) != 9:
+                        w.configure(border_color='red', border_width=2)
+                        lbl.configure(text='Debe tener 9 dígitos')
+                        return False
+                    w.configure(border_color='#2b2b2b', border_width=1)
+                    lbl.configure(text='')
+                    return True
+
+                w.bind('<FocusOut>', val_autorizacion)
+                dv['VALIDAR_AUTORIZACION'] = val_autorizacion
+
+            elif campo == 'CODIGO_SERVICIO':
+                def only_alphanum(P):
+                    return P == "" or P.isalnum()
+                vcmd_cs = (win.register(only_alphanum), '%P')
+
+                def to_upper_and_filter(*args):
+                    txt = var.get()
+                    filtered = ''.join(ch for ch in txt if ch.isalnum()).upper()
+                    if txt != filtered:
+                        var.set(filtered)
+                var.trace_add('write', to_upper_and_filter)
+
+                w = ctk.CTkEntry(
+                    frm, textvariable=var,
+                    placeholder_text='CÓDIGO DE SERVICIO', width=300,
+                    validate='key', validatecommand=vcmd_cs
+                )
+                w.pack(fill='x', pady=(5, 0))
+                w.bind('<KeyRelease>', lambda e, v=var: v.set(v.get().upper()))
+
+                lbl_err_codigo = ctk.CTkLabel(frm, text='', text_color='red')
+                lbl_err_codigo.pack(fill='x', pady=(2, 8))
+
+                def val_codigo_servicio(e=None, var=var, w=w, lbl=lbl_err_codigo):
+                    txt = var.get().strip()
+                    if not txt:
+                        w.configure(border_color='red', border_width=2)
+                        lbl.configure(text='Código de servicio obligatorio')
+                        return False
+                    w.configure(border_color='#2b2b2b', border_width=1)
+                    lbl.configure(text='')
+                    return True
+
+                w.bind('<FocusOut>', val_codigo_servicio)
+                dv['VALIDAR_CODIGO_SERVICIO'] = val_codigo_servicio
+
+            elif campo in ('CANTIDAD', 'VLR_UNITARIO', 'COPAGO'):
+                if campo == 'CANTIDAD':
+                    def only_digits_len3(P):
+                        return P == "" or (P.isdigit() and len(P) <= 3)
+                    vcmd_num = (win.register(only_digits_len3), '%P')
+                    placeholder = '0-999'
+                else:
+                    def only_digits(P):
+                        return P == "" or P.isdigit()
+                    vcmd_num = (win.register(only_digits), '%P')
+                    placeholder = default
+
+                w = ctk.CTkEntry(
+                    frm, textvariable=var, width=300,
+                    placeholder_text=placeholder,
+                    validate='key', validatecommand=vcmd_num
+                )
+                w.pack(fill='x', pady=(5, 0))
+                lbl_err.pack(fill='x', pady=(2, 8))
+
+                def make_val_general(var, w, lbl, campo):
+                    def validator(e=None):
+                        txt = var.get().strip()
+                        if not txt:
+                            w.configure(border_color='red', border_width=2)
+                            lbl.configure(text=f'{campo.replace("_", " ").title()} obligatorio')
+                            return False
+                        w.configure(border_color='#2b2b2b', border_width=1)
+                        lbl.configure(text='')
+                        return True
+                    return validator
+
+                val_func = make_val_general(var, w, lbl_err, campo)
+                w.bind('<FocusOut>', val_func)
+                dv[f'VALIDAR_{campo}'] = val_func
+
+            else:
+                w = ctk.CTkEntry(
+                    frm, textvariable=var, width=300,
+                    placeholder_text=default
+                )
+                w.pack(fill='x', pady=(5, 0))
+
+            # 4) Guardar referencia del campo
+            dv[campo] = {'var': var, 'widget': w}
+
+            # 5) Avanzar posición en el grid
+            dynamic_col += 1
+            if dynamic_col == 3:
+                dynamic_col = 0
+                dynamic_row += 1
+
+        # 6) Añadir el set de variables y frames a las listas
+        detail_vars.append(dv)
+        service_frames.append(current_frames)
+
+        if len(service_frames) > 1:
+            btn_del.configure(state='normal')
+
+
+    if any(c in campos_paquete for c in DETAIL_ICONS):
+        add_service_block()
+    
+        def remove_service_block():
+            
+            nonlocal dynamic_row, dynamic_col
+
+            if len(service_frames) <= 1:
+                return  # nada que eliminar
+
+            # Sacamos el último bloque de frames y lo destruimos
+            last_frames = service_frames.pop()
+            for f in last_frames:
+                f.destroy()
+
+            # También eliminamos sus datos de detail_vars
+            detail_vars.pop()
+
+            # Ajustamos dynamic_row/col para volver a esa posición
+            cnt = len(last_frames)
+            dynamic_col -= cnt
+            # si dinamyc_col queda <0, retrocedemos fila
+            while dynamic_col < 0:
+                dynamic_row -= 1
+                dynamic_col += 3
+
+            if len(service_frames) <= 1:
+                btn_del.configure(state='disabled')
+
+    # -----------------------------
+    # Validar y guardar en BD
+    # -----------------------------
+    def validate_and_save(final):
+    # ¿Alguna observación completada?
+        any_obs = any(
+            dv.get('OBSERVACION', {}).get('var').get().strip()
+            for dv in detail_vars
+        )
+        ok = True
+
+        if not any_obs:
+            # Chequeo obligatorio de fecha si existe
+            if 'FECHA_SERVICIO' in field_vars:
+                ok &= val_fecha()
+
+            # Campos fijos obligatorios
+            for k, v in field_vars.items():
+                w = widgets[k]
+                if not v.get().strip():
+                    w.configure(border_color='red', border_width=2)
+                    ok = False
+                else:
+                    w.configure(border_color='#2b2b2b', border_width=1)
+
+            # Detalle: si no hay observación en ese bloque, validar sus campos
+            for dv in detail_vars:
+                obs = dv.get('OBSERVACION', {}).get('var').get().strip()
+                if obs:
+                    # Si éste bloque tiene observación, salta validación de sus campos
+                    continue
+
+                # Validar AUTORIZACION si existe
+                if 'VALIDAR_AUTORIZACION' in dv and callable(dv['VALIDAR_AUTORIZACION']):
+                    if not dv['VALIDAR_AUTORIZACION']():
+                        ok = False
+
+                # Resto de campos del detalle: solo los que almacenan dict {'var','widget'}
+                for campo, info in dv.items():
+                    if not isinstance(info, dict):
+                        continue  # saltar funciones u otras entradas
+                    # ya omitimos VALIDAR_AUTORIZACION y OBSERVACION
+                    if campo == 'OBSERVACION':
+                        continue
+
+                    w = info['widget']
+                    if not info['var'].get().strip():
+                        w.configure(border_color='red', border_width=2)
+                        ok = False
+                    else:
+                        w.configure(border_color='#2b2b2b', border_width=1)
+
+        return ok
+
+    def load_assignment():
+        """Carga aleatoriamente un radicado pendiente y actualiza los widgets."""
+        nonlocal radicado, nit, factura
+
+        # 1) Obtener nueva asignación
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT TOP 1 RADICADO, NIT, FACTURA
+            FROM ASIGNACION_TIPIFICACION
+            WHERE STATUS_ID = 1
+            AND NUM_PAQUETE = %s
+            AND TIPO_PAQUETE = 'DIGITACION'
+            ORDER BY NEWID()
+        """, (pkg,))
+        row = cur.fetchone()
+        if not row:
+            messagebox.showinfo("Sin asignaciones", "No hay asignaciones pendientes.")
+            cur.close()
+            return False  # Indica que no hay más asignaciones
+        radicado, nit, factura = row
+        cur.execute(
+            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s",
+            (radicado,)
+        )
+        conn.commit()
+        cur.close()
+
+        # 2) Actualizar campos de la GUI
+        entry_radicado_var.set(str(radicado))
+        entry_nit_var.set(str(nit))
+        entry_factura_var.set(str(factura))
+
+        # 3) Limpiar campos de tipificación previos
+        for var in field_vars.values():
+            var.set('')
+        for dv in detail_vars:
+            for info in dv.values():
+                if isinstance(info, dict):
+                    info['var'].set('')
+
+        return True
+
+    def do_save(final=False):
+        if not validate_and_save(final):
+            return
+
+        cur2 = conn.cursor()
+        asig_id = int(radicado)
+
+        # --- 1) Preparar datos tipificación ---
+        num_doc_i = int(var_num.get().strip()) if 'NUM_DOC' in field_vars and var_num.get().strip() else None
+        fecha_obj = (datetime.datetime.strptime(var_fecha.get().strip(), "%d/%m/%Y").date()
+                    if 'FECHA_SERVICIO' in field_vars and var_fecha.get().strip() else None)
+        # TipoDoc
+        if 'TIPO_DOC_ID' in field_vars and var_tipo.get().strip():
+            nombre = var_tipo.get().strip().upper()
+            cur2.execute(
+                "SELECT ID FROM TIPO_DOC WHERE UPPER(NAME) = %s",
+                (nombre,)   # ¡ojo: la coma para que sea tupla de un solo elemento!
+            )
+            row = cur2.fetchone()
+            tipo_doc_id = row[0] if row else None
+        else:
+            tipo_doc_id = None
+
+        # Diagnóstico: si está vacío, usamos None para que SQL reciba NULL
+        raw = var_diag.get().strip().upper()
+        diag_code = raw if raw else None
+
+        # --- 2) Insertar cabecera TIPIFICACION con USER_ID ---
+        cur2.execute("""
+            INSERT INTO TIPIFICACION
+            (ASIGNACION_ID, FECHA_SERVICIO, TIPO_DOC_ID, NUM_DOC, DIAGNOSTICO, USER_ID)
+            OUTPUT INSERTED.ID
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (asig_id, fecha_obj, tipo_doc_id, num_doc_i, diag_code, current_user_id,))
+        tip_id = cur2.fetchone()[0]
+
+        # --- 3) Insertar detalles y detectar si hay observaciones ---
+        tiene_obs = False
+        for dv in detail_vars:
+            # Leer cada campo
+            auth   = dv.get('AUTORIZACION', {}).get('var').get().strip() or None
+            auth   = int(auth) if auth else None
+
+            cs     = dv.get('CODIGO_SERVICIO', {}).get('var').get().strip().upper() or None
+            qty    = dv.get('CANTIDAD', {}).get('var').get().strip() or None
+            qty    = int(qty) if qty else None
+
+            valor  = dv.get('VLR_UNITARIO', {}).get('var').get().strip() or None
+            valor  = float(valor) if valor else None
+
+            copago = dv.get('COPAGO', {}).get('var').get().strip() or None
+            copago = float(copago) if copago else None
+
+            obs    = dv.get('OBSERVACION', {}).get('var').get().strip() or None
+            if obs:
+                tiene_obs = True
+
+            # Si todo es None, saltamos
+            if all(v is None for v in (auth, cs, qty, valor, copago, obs)):
+                continue
+
+            # (Opcional) validaciones de cs...
+            cur2.execute("""
+                INSERT INTO TIPIFICACION_DETALLES
+                (TIPIFICACION_ID, AUTORIZACION, CODIGO_SERVICIO, CANTIDAD, VLR_UNITARIO, COPAGO, OBSERVACION)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (tip_id, auth, cs, qty, valor, copago, obs,))
+
+        conn.commit()
+
+        # --- 4) Actualizar estado ASIGNACION_TIPIFICACION ---
+        nuevo_status = 4 if tiene_obs else 3
+        cur2.execute(
+            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = %s WHERE RADICADO = %s",
+            (nuevo_status, asig_id,)
+        )
+        conn.commit()
+        cur2.close()
+
+        # --- 5) Cerrar ventana y continuar/volver ---
+        if final:
+            entry_fecha.unbind("<KeyRelease>")
+            entry_fecha.unbind("<FocusOut>")
+
+            # 2) Y programamos la destrucción en el idle loop,
+            #    así los callbacks que ya estén en cola pueden finalizar sin error.
+            win.after_idle(win.destroy)
+            return
+        if parent_root:
+            parent_root.deiconify()
+        else:
+            # En lugar de win.destroy + reiniciar toda la función,
+            # simplemente recargamos la siguiente asignación
+            if not load_assignment():
+                # Si no hay más asignaciones, cerramos
+                win.destroy()
+                if parent_root:
+                    parent_root.deiconify()
+
+
+    bind_select_all(card)
+    # -----------------------------
+    # Botonera
+    # -----------------------------
+    footer = ctk.CTkFrame(card, fg_color='transparent')
+    footer.pack(side='bottom', fill='x', padx=30, pady=10)
+
+    save_img = load_icon_from_url(
+        "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/save.svg", size=(18,18)
+    )
+    btn_save = ctk.CTkButton(
+        footer,
+        text="Guardar y siguiente",
+        image=save_img,
+        compound="left",
+        fg_color="#28a745",
+        hover_color="#218838",
+        command=lambda: do_save(final=False)
+    )
+    btn_save.pack(side='left', expand=True, fill='x', padx=5)
+
+    add_img = load_icon_from_url(
+        "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/plus-circle.svg", size=(18,18)
+    )
+    btn_add = ctk.CTkButton(
+        footer,
+        text="Agregar servicio",
+        image=add_img,
+        compound="left",
+        fg_color="#17a2b8",
+        hover_color="#138496",
+        command=add_service_block
+    )
+    btn_add.pack(side='left', expand=True, fill='x', padx=5)
+    
+    del_img = load_icon_from_url(
+        "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/trash-alt.svg",
+        size=(18,18)
+    )
+    btn_del = ctk.CTkButton(
+        footer,
+        text="Eliminar servicio",
+        image=del_img,
+        compound="left",
+        fg_color="#dc3545",
+        hover_color="#c82333",
+        command=remove_service_block,
+        state='disabled'
+    )
+    btn_del.pack(side='left', expand=True, fill='x', padx=5)
+
+    exit_img = load_icon_from_url(
+        "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/sign-out-alt.svg", size=(18,18)
+    )
+    btn_exit = ctk.CTkButton(
+        footer,
+        text="Salir y Guardar",
+        image=exit_img,
+        compound="left",
+        fg_color="#dc3545",
+        hover_color="#c82333",
+        command=lambda: do_save(final=True)
+    )
+    btn_exit.pack(side='left', expand=True, fill='x', padx=5)
+
+    # Bind Enter para cada botón
+    for b in (btn_save, btn_add, btn_del, btn_exit):
+        b.bind("<Return>", lambda e, btn=b: btn.invoke())
+
+def iniciar_calidad(parent_root, conn, current_user_id):
+    entry_radicado_var = tk.StringVar()
+    entry_nit_var      = tk.StringVar()
+    entry_factura_var  = tk.StringVar()
+    # 1) Carga paquete y campos
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT MAX(NUM_PAQUETE)
+        FROM ASIGNACION_TIPIFICACION
+        WHERE UPPER(LTRIM(RTRIM(TIPO_PAQUETE))) = %s AND TIPO_PAQUETE = 'CALIDAD'
+    """, ("CALIDAD",))
+    pkg = cur.fetchone()[0] or 0
+    cur.close()
+
+
+    # 2) Asignación aleatoria
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT TOP 1 RADICADO, NIT, FACTURA
+        FROM ASIGNACION_TIPIFICACION
+        WHERE STATUS_ID = 1
+        AND NUM_PAQUETE = %s
+        AND TIPO_PAQUETE = 'CALIDAD'
+        ORDER BY NEWID()
+    """, (pkg,))
+    row = cur.fetchone()
+    if not row:
+        messagebox.showinfo("Sin asignaciones", "No hay asignaciones pendientes.")
+        cur.close()
+        return
+    radicado, nit, factura = row
+    entry_radicado_var.set(str(radicado))
+    entry_nit_var.set(str(nit))
+    entry_factura_var.set(str(factura))
+    cur.execute("UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s", (radicado,))
+    conn.commit()
+    cur.close()
+    
+    cur2 = conn.cursor()
+    cur2.execute("SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE = %s", (pkg,))
+    campos_paquete = {r[0] for r in cur2.fetchall()}
+    cur2.close()
+
+    # 3) Ventana principal
+    win = ctk.CTkToplevel(parent_root)
+    win.title(f"Capturador De Datos · Paquete {pkg}")
+
+    # Obtener la resolución de la pantalla
+    screen_width = win.winfo_screenwidth()
+    screen_height = win.winfo_screenheight()
+
+    # Calcular el alto de la ventana para que no cubra la barra de tareas
+    taskbar_height = 40  # Estimación del alto de la barra de tareas de Windows (puede variar)
+    window_height = screen_height - taskbar_height  # Resta el alto de la barra de tareas
+
+    # Establecer la geometría de la ventana para que ocupe toda la pantalla, pero sin la barra de tareas
+    win.geometry(f"{screen_width}x{window_height}")
+
+    # Calcular la posición para centrar la ventana
+    center_x = (screen_width // 2) - (screen_width // 2)
+    center_y = (window_height // 2) - (window_height // 2)
+
+    # Establecer la nueva geometría centrada
+    win.geometry(f"{screen_width}x{window_height}+{center_x}+{center_y}")
+
+    win.grab_set()
+
+    container = ctk.CTkFrame(win, fg_color="#1e1e1e")
+    container.grid(row=0, column=0, sticky="nsew")
+    win.grid_rowconfigure(0, weight=1)
+    win.grid_columnconfigure(0, weight=1)
+
+    card = ctk.CTkFrame(container, fg_color="#2b2b2b")
+    card.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+    container.grid_rowconfigure(0, weight=1)
+    container.grid_columnconfigure(0, weight=1)
+
+    # Avatar y título
+    avatar = load_icon_from_url(
+        "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/user-circle.svg",
+        size=(80, 80)
+    )
+    ctk.CTkLabel(card, image=avatar, text="").pack(pady=(20, 5))
+    ctk.CTkLabel(
+        card,
+        text=f"📦 Paquete #{pkg}",
+        font=ctk.CTkFont(size=26, weight='bold'),
+        text_color='white'
+    ).pack(pady=(0, 15))
+
+
+   # 4) Lectura de Radicado, NIT, Factura
+    read_frame = ctk.CTkFrame(card, fg_color='transparent')
+    read_frame.pack(fill='x', padx=30)
+    read_frame.grid_columnconfigure(1, weight=1)
+
+    # Labels fijos
+    ctk.CTkLabel(read_frame, text="Radicado:", anchor='w').grid(row=0, column=0, pady=5, sticky='w')
+    ctk.CTkEntry(
+        read_frame,
+        textvariable=entry_radicado_var,   # <-- aquí
+        state='readonly',
+        width=300
+    ).grid(row=0, column=1, pady=5, sticky='ew', padx=(10,0))
+
+    ctk.CTkLabel(read_frame, text="NIT:", anchor='w').grid(row=1, column=0, pady=5, sticky='w')
+    ctk.CTkEntry(
+        read_frame,
+        textvariable=entry_nit_var,        # <-- y aquí
+        state='readonly',
+        width=300
+    ).grid(row=1, column=1, pady=5, sticky='ew', padx=(10,0))
+
+    ctk.CTkLabel(read_frame, text="Factura:", anchor='w').grid(row=2, column=0, pady=5, sticky='w')
+    ctk.CTkEntry(
+        read_frame,
+        textvariable=entry_factura_var,    # <-- y aquí
+        state='readonly',
+        width=300
+    ).grid(row=2, column=1, pady=5, sticky='ew', padx=(10,0))
+
+
+    # 5) Scrollable y grid de 3 columnas
+    scroll = ctk.CTkScrollableFrame(card, fg_color='#2b2b2b')
+    scroll.pack(fill='both', expand=True, padx=20, pady=(10,0))
+    card.pack_propagate(False) 
+    card.grid_rowconfigure(1, weight=1)
+    card.grid_columnconfigure(0, weight=1)
+    for col in range(3):
+        scroll.grid_columnconfigure(col, weight=1, uniform="col")
+
+    # 6) Variables de posición y contenedores
+    fixed_row = 0
+    fixed_col = 0
+    field_vars = {}
+    widgets = {}
+    detail_vars = []
+    service_frames = []
+
+    def place_fixed_field(frame):
+        nonlocal fixed_row, fixed_col
+        frame.grid(row=fixed_row, column=fixed_col, padx=10, pady=8, sticky='nsew')
+        fixed_col += 1
+        if fixed_col == 3:
+            fixed_col = 0
+            fixed_row += 1
+
+    def on_close():
+        # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE ASIGNACION_TIPIFICACION 
+            SET STATUS_ID = 1 
+            WHERE RADICADO = %s
+        """, (radicado,))
+        conn.commit()
+        cur.close()
+        win.destroy()  # Cierra la ventana después de actualizar el estado
+
+    # Configurar el evento de cierre de la ventana
+    win.protocol("WM_DELETE_WINDOW", on_close)
+
+    # 7) Funciones auxiliares de validación y selecciones
+    def select_all(event):
+        w = event.widget
+        try:
+            w.select_range(0, 'end')
+            w.icursor('end')
+        except: pass
+
+    def clear_selection_on_key(event):
+        w = event.widget
+        if event.keysym in ('BackSpace', 'Delete'):
+            if w.selection_present(): w.delete(0, 'end'); return
+        ch = event.char
+        if len(ch)==1 and ch.isprintable() and w.selection_present():
+            w.delete(0, 'end')
+
+    def bind_select_all(widget):
+        for child in widget.winfo_children():
+            if isinstance(child, ctk.CTkEntry):
+                child.bind("<Double-Button-1>", select_all)
+                child.bind("<FocusIn>", select_all)
+                child.bind("<Key>", clear_selection_on_key)
+            bind_select_all(child)
+
+    def mark_required(w, var):
+        def chk(e=None):
+            if not var.get().strip():
+                w.configure(border_color='red', border_width=2)
+            else:
+                w.configure(border_color='#2b2b2b', border_width=1)
+        w.bind('<FocusOut>', chk)
+
+    def make_field(label_text, icon_url=None):
+        frame = ctk.CTkFrame(scroll, fg_color='transparent')
+        if icon_url:
+            ico = load_icon_from_url(icon_url, size=(20,20))
+            ctk.CTkLabel(frame, image=ico, text='').pack(side='left', padx=(0,5))
+        ctk.CTkLabel(frame, text=label_text, anchor='w').pack(fill='x')
+        return frame
+
+
+    # Función para seleccionar todo el texto en el campo
+    def select_all(event):
+        w = event.widget
+        w.select_range(0, 'end')
+        return 'break'
+
+    # Función para borrar todo al presionar cualquier tecla si hay selección
+    def clear_selection_on_key(event):
+        w = event.widget
+        if event.keysym in ('BackSpace', 'Delete'):
+            if w.selection_present(): 
+                w.delete(0, 'end')
+            return
+        ch = event.char
+        if len(ch) == 1 and ch.isprintable() and w.selection_present():
+            w.delete(0, 'end')
+
+    # Función para formatear el campo de fecha mientras el usuario escribe
+    def format_fecha(event):
+        txt = var_fecha.get()
+        # Si es borrado o navegación, no formatear aquí
+        if event.keysym in ('BackSpace', 'Delete', 'Left', 'Right', 'Home', 'End'):
+            return
+
+        # Quitamos cualquier slash existente y limitamos a 8 dígitos (DDMMYYYY)
+        digits = txt.replace('/', '')[:8]
+
+        # Reconstruimos con slashes: DD / MM / AAAA
+        parts = []
+        if len(digits) >= 2:
+            parts.append(digits[:2])
+            if len(digits) >= 4:
+                parts.append(digits[2:4])
+                parts.append(digits[4:])
+            else:
+                parts.append(digits[2:])
+        else:
+            parts.append(digits)
+
+        new_text = '/'.join(parts)
+        var_fecha.set(new_text)
+        entry_fecha.icursor(len(new_text))  # colocamos el cursor al final
+
+    def val_fecha(e=None):
+        txt = var_fecha.get().strip()
+        try:
+            d = datetime.datetime.strptime(txt, '%d/%m/%Y').date()
+            if d > datetime.date.today():
+                raise ValueError("Fecha futura")
+            entry_fecha.configure(border_color='#2b2b2b', border_width=1)
+            lbl_err_fecha.configure(text='')
+            return True
+        except Exception:
+            entry_fecha.configure(border_color='red', border_width=2)
+            lbl_err_fecha.configure(text='Fecha inválida')
+            return False
+
+    # ————— Bloque de creación del campo de fecha —————
+
+    if 'FECHA_SERVICIO' in campos_paquete:
+        frm = make_field(
+            'Fecha Servicio:',
+            'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/calendar.svg'
+        )
+        var_fecha = tk.StringVar()
+
+        entry_fecha = ctk.CTkEntry(
+            frm,
+            textvariable=var_fecha,
+            placeholder_text='DD/MM/AAAA',
+            width=300,
+            validate='key',
+            validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
+        )
+        entry_fecha.pack(fill='x', pady=(5, 0))
+
+        # Selección completa en doble-click o focus
+        entry_fecha.bind("<Double-Button-1>", select_all)
+        entry_fecha.bind("<FocusIn>", select_all)
+
+        # Borra todo al presionar BackSpace o Delete
+        entry_fecha.bind("<Key>", clear_selection_on_key)
+
+        # Formateo dinámico al escribir
+        entry_fecha.bind("<KeyRelease>", format_fecha)
+
+        lbl_err_fecha = ctk.CTkLabel(frm, text='', text_color='red')
+        lbl_err_fecha.pack(fill='x')
+
+        field_vars['FECHA_SERVICIO'] = var_fecha
+        widgets['FECHA_SERVICIO']   = entry_fecha
+
+        # Validación al perder foco
+        entry_fecha.bind('<FocusOut>', val_fecha)
+
+        # Posicionar en el layout
+        place_fixed_field(frm)
+
+    # ————— Bloque de creación del campo de fecha final —————
+# ————— Bloque de creación del campo de fecha final —————
+
+    if 'FECHA_SERVICIO_FINAL' in campos_paquete:
+        frm_final = make_field(
+            'Fecha Servicio Final:',
+            'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/calendar.svg'
+        )
+        var_fecha_final = tk.StringVar()
+
+        entry_fecha_final = ctk.CTkEntry(
+            frm_final,
+            textvariable=var_fecha_final,
+            placeholder_text='DD/MM/AAAA',
+            width=300,
+            validate='key',
+            validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
+        )
+        entry_fecha_final.pack(fill='x', pady=(5, 0))
+
+        # Función de formateo para fecha final
+        def format_fecha_final(event):
+            txt = var_fecha_final.get()
+            if event.keysym in ('BackSpace','Delete','Left','Right','Home','End'):
+                return
+            digits = txt.replace('/', '')[:8]
+            parts = []
+            if len(digits) >= 2:
+                parts.append(digits[:2])
+                if len(digits) >= 4:
+                    parts.append(digits[2:4])
+                    parts.append(digits[4:])
+                else:
+                    parts.append(digits[2:])
+            else:
+                parts.append(digits)
+            new_text = '/'.join(parts)
+            var_fecha_final.set(new_text)
+            entry_fecha_final.icursor(len(new_text))
+
+        # Función de validación para fecha final
+        def val_fecha_final(e=None):
+            txt = var_fecha_final.get().strip()
+            try:
+                d = datetime.datetime.strptime(txt, '%d/%m/%Y').date()
+                if d > datetime.date.today():
+                    raise ValueError("Fecha futura")
+                entry_fecha_final.configure(border_color='#2b2b2b', border_width=1)
+                lbl_err_fecha_final.configure(text='')
+                return True
+            except Exception:
+                entry_fecha_final.configure(border_color='red', border_width=2)
+                lbl_err_fecha_final.configure(text='Fecha inválida')
+                return False
+
+        lbl_err_fecha_final = ctk.CTkLabel(frm_final, text='', text_color='red')
+        lbl_err_fecha_final.pack(fill='x')
+
+        # Bindings idénticos a los de fecha_servicio
+        entry_fecha_final.bind("<Double-Button-1>", select_all)
+        entry_fecha_final.bind("<FocusIn>", select_all)
+        entry_fecha_final.bind("<Key>", clear_selection_on_key)
+        entry_fecha_final.bind("<KeyRelease>", format_fecha_final)
+        entry_fecha_final.bind("<FocusOut>", val_fecha_final)
+
+        field_vars['FECHA_SERVICIO_FINAL'] = var_fecha_final
+        widgets['FECHA_SERVICIO_FINAL']   = entry_fecha_final
+
+        place_fixed_field(frm_final)
 
 
     if 'TIPO_DOC_ID' in campos_paquete:
@@ -1382,7 +2385,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         cur.execute("""
             SELECT TOP 1 RADICADO, NIT, FACTURA
             FROM ASIGNACION_TIPIFICACION
-            WHERE STATUS_ID = 1 AND NUM_PAQUETE = %s
+            WHERE STATUS_ID = 1
+            AND NUM_PAQUETE = %s
+            AND TIPO_PAQUETE = 'CALIDAD'
             ORDER BY NEWID()
         """, (pkg,))
         row = cur.fetchone()
@@ -1424,6 +2429,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         num_doc_i = int(var_num.get().strip()) if 'NUM_DOC' in field_vars and var_num.get().strip() else None
         fecha_obj = (datetime.datetime.strptime(var_fecha.get().strip(), "%d/%m/%Y").date()
                     if 'FECHA_SERVICIO' in field_vars and var_fecha.get().strip() else None)
+        fecha_final_obj = (datetime.datetime.strptime(var_fecha_final.get().strip(), "%d/%m/%Y").date()
+                    if 'FECHA_SERVICIO_FINAL' in field_vars and var_fecha_final.get().strip() else None)
         # TipoDoc
         if 'TIPO_DOC_ID' in field_vars and var_tipo.get().strip():
             nombre = var_tipo.get().strip().upper()
@@ -1443,10 +2450,10 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         # --- 2) Insertar cabecera TIPIFICACION con USER_ID ---
         cur2.execute("""
             INSERT INTO TIPIFICACION
-            (ASIGNACION_ID, FECHA_SERVICIO, TIPO_DOC_ID, NUM_DOC, DIAGNOSTICO, USER_ID)
+            (ASIGNACION_ID, FECHA_SERVICIO, FECHA_SERVICIO_FINAL, TIPO_DOC_ID, NUM_DOC, DIAGNOSTICO, USER_ID)
             OUTPUT INSERTED.ID
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (asig_id, fecha_obj, tipo_doc_id, num_doc_i, diag_code, current_user_id,))
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (asig_id, fecha_obj, fecha_final_obj, tipo_doc_id, num_doc_i, diag_code, current_user_id,))
         tip_id = cur2.fetchone()[0]
 
         # --- 3) Insertar detalles y detectar si hay observaciones ---
@@ -1514,6 +2521,10 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
 
     bind_select_all(card)
+    
+    def remove_service_block():
+        # se redefinirá más abajo si hay bloques dinámicos
+        pass
     # -----------------------------
     # Botonera
     # -----------------------------
@@ -1581,10 +2592,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     # Bind Enter para cada botón
     for b in (btn_save, btn_add, btn_del, btn_exit):
         b.bind("<Return>", lambda e, btn=b: btn.invoke())
-
-
+        
 def ver_progreso(root, conn):
-
     # — Funciones auxiliares —
     def parse_fecha(s):
         try:
@@ -1624,17 +2633,17 @@ def ver_progreso(root, conn):
             messagebox.showwarning("Selección inválida", "Selecciona un paquete válido.")
             return
 
-        d1 = parse_fecha(fecha_desde.get().strip())
-        d2 = parse_fecha(fecha_hasta.get().strip())
+        d1 = fecha_desde.get_date() if var_fecha_desde.get().strip() else None
+        d2 = fecha_hasta.get_date() if var_fecha_hasta.get().strip() else None
 
         filtros = ["a.NUM_PAQUETE = %s"]
         params = [pkg]
 
         if d1:
-            filtros.append("t.FECHA_SERVICIO >= %s")
+            filtros.append("CAST(t.fecha_creacion AS DATE) >= %s")
             params.append(d1)
         if d2:
-            filtros.append("t.FECHA_SERVICIO <= %s")
+            filtros.append("CAST(t.fecha_creacion AS DATE) <= %s")
             params.append(d2)
 
         sel_est = [e for e in estados if estado_checks[e].get()]
@@ -1714,9 +2723,9 @@ def ver_progreso(root, conn):
         params  = [pkg]
 
         if d1:
-            filtros.append("t.FECHA_SERVICIO >= %s"); params.append(d1)
+            filtros.append("t.fecha_creacion >= %s"); params.append(d1)
         if d2:
-            filtros.append("t.FECHA_SERVICIO <= %s"); params.append(d2)
+            filtros.append("t.fecha_creacion <= %s"); params.append(d2)
 
         sel_est = [e for e in estados if estado_checks[e].get()]
         if 0 < len(sel_est) < len(estados):
@@ -1797,22 +2806,38 @@ def ver_progreso(root, conn):
     if not paquetes:
         paquetes = ["0"]
     pkg_var = tk.StringVar(value=paquetes[0])
+    var_fecha_desde = tk.StringVar(value="")
+    var_fecha_hasta = tk.StringVar(value="")
     ctk.CTkLabel(topfrm, text="Paquete:").grid(row=0, column=0, sticky="w")
     ctk.CTkOptionMenu(topfrm, values=paquetes, variable=pkg_var, width=80) \
         .grid(row=0, column=1, sticky="w", padx=(0,20))
 
     ctk.CTkLabel(topfrm, text="Desde:").grid(row=0, column=2, sticky="w")
-    fecha_desde = ctk.CTkEntry(topfrm, width=100, placeholder_text="DD/MM/AAAA")
+    fecha_desde = DateEntry(
+        topfrm,
+         width=12,
+         locale='es_CO',
+         date_pattern='dd/MM/yyyy',
+         textvariable=var_fecha_desde     # ← enlazado al StringVar
+    )
     fecha_desde.grid(row=0, column=3, sticky="w", padx=(0,20))
 
     ctk.CTkLabel(topfrm, text="Hasta:").grid(row=0, column=4, sticky="w")
-    fecha_hasta = ctk.CTkEntry(topfrm, width=100, placeholder_text="DD/MM/AAAA")
+    fecha_hasta = DateEntry(
+        topfrm,
+        width=12,
+        locale='es_CO',
+        date_pattern='dd/MM/yyyy',
+        textvariable=var_fecha_hasta     # ← enlazado al StringVar
+    )
     fecha_hasta.grid(row=0, column=5, sticky="w", padx=(0,20))
-
+    
+    btn_clean_date = ctk.CTkButton(topfrm, text="Limpiar fechas", command=lambda: (var_fecha_desde.set(""), var_fecha_hasta.set("")), width=100)
+    btn_clean_date.grid(row=0, column=6, padx=(0,20))
     btn_refresh = ctk.CTkButton(topfrm, text="Aplicar filtros", command=cargar_tabs, width=120)
-    btn_refresh.grid(row=0, column=6, padx=(20,5))
+    btn_refresh.grid(row=0, column=7, padx=(0,20))
     btn_export = ctk.CTkButton(topfrm, text="Exportar CSV", command=exportar, width=100)
-    btn_export.grid(row=0, column=7)
+    btn_export.grid(row=0, column=8)
 
     # — Estados con buscador y selección múltiple —
     cur = conn.cursor()
@@ -2361,7 +3386,7 @@ def open_dashboard(user_id, first_name, last_name, parent):
     # Creo el Toplevel
     root = ctk.CTkToplevel(parent)
     root.title("Dashboard - Capturador De Datos")
-    root.geometry("500x400")
+    root.geometry("500x500")
     root.resizable(False, False)
 
     # Bienvenida
@@ -2381,9 +3406,8 @@ def open_dashboard(user_id, first_name, last_name, parent):
     option.pack(pady=(0, 10))
 
     # Marco para los botones
-    btn_frame = ctk.CTkFrame(root, width=400, height=200)
-    btn_frame.place(relx=0.5, rely=0.5, anchor="center")
-    btn_frame.pack_propagate(False)
+    btn_frame = ctk.CTkFrame(root)
+    btn_frame.pack(padx=20, pady=20, fill="both", expand=True)
 
     # Función para cerrar sesión
     def on_logout():
@@ -2399,6 +3423,10 @@ def open_dashboard(user_id, first_name, last_name, parent):
         safe_destroy(root)
         iniciar_tipificacion(None, conn, user_id)
 
+    def start_quality_and_close():
+        safe_destroy(root)
+        iniciar_calidad(None, conn, user_id)
+    
     buttons_by_role = {
         1: [
             ("Cargar Paquete",     lambda: cargar_paquete(root, conn)),
@@ -2413,6 +3441,9 @@ def open_dashboard(user_id, first_name, last_name, parent):
             ("Actualizar Datos",   lambda: actualizar_usuario(root, conn, user_id)),
             ("Ver Progreso",       lambda: ver_progreso(root, conn)),
             ("Exportar Capturación De Datos", lambda: exportar_paquete(root, conn)),
+        ],
+        3: [
+            ("Iniciar Validación Calidad Datos", start_quality_and_close)
         ]
     }
 
