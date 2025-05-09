@@ -1,13 +1,7 @@
-import ctypes
-import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
-import io
-import json
-import logging
 import os
-import shutil
 import sys
 import subprocess
 from threading import Thread
@@ -17,13 +11,15 @@ import customtkinter as ctk
 import bcrypt
 import smtplib
 import random
-import zipfile
 import string
 import requests
 import tkinter as tk
 from tkinter import ttk
 from tqdm import tqdm
-import psutil
+from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import QRegularExpression
+from PyQt5.QtGui  import QRegularExpressionValidator
+
 
 # — Librerías estándar —
 # (subprocess ya importado arriba si lo necesitas para llamadas externas)
@@ -34,7 +30,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 # — Módulos propios —
 from db_connection import conectar_sql_server
-from dashboard import open_dashboard
+from dashboard import DashboardWindow
 
 from version import __version__ as local_version
 
@@ -44,7 +40,7 @@ UPDATE_JSON_URL = "https://raw.githubusercontent.com/JhoanDuarte/Capturador_Actu
 try:
     from version import __version__ as local_version
 except ImportError:
-    local_version = "1.1.0"  # Si no hay versión, se forzará la actualización
+    local_version = "1.2.0"  # Si no hay versión, se forzará la actualización
 
 import os
 import sys
@@ -143,10 +139,23 @@ def run_dashboard_from_args():
         if conn is None:
             raise RuntimeError("No se pudo conectar a la BD.")
         # Creamos root y abrimos el dashboard
-        root = ctk.CTk()
-        open_dashboard(uid, fn, ln, parent=root)
-        root.mainloop()
-        sys.exit(0)
+        def run_dashboard_from_args():
+            if getattr(sys, 'frozen', False) \
+            and len(sys.argv) >= 2 and os.path.basename(sys.argv[1]).lower() == "dashboard.py":
+                try:
+                    uid = int(sys.argv[2])
+                    fn  = sys.argv[3]
+                    ln  = sys.argv[4]
+                except Exception:
+                    print("Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>")
+                    sys.exit(1)
+
+                # Arrancamos Qt en vez de CTk
+                app = QtWidgets.QApplication(sys.argv)
+                window = DashboardWindow(uid, fn, ln)   # sin parent=…
+                window.show()
+                sys.exit(app.exec_())
+
 
 # Ejecutamos la detección *antes* de definir nada más
 run_dashboard_from_args()
@@ -218,7 +227,7 @@ class LoginWindow(QtWidgets.QWidget):
         vbox.setSpacing(30)
 
         # Logo (o texto si no existe)
-        logo_path = os.path.join(os.path.dirname(__file__), "LogoImg.png")
+        logo_path = resource_path("LogoImg.png")
         if os.path.exists(logo_path):
             lbl_logo = QtWidgets.QLabel(self.panel)
             lbl_logo.setAttribute(QtCore.Qt.WA_TranslucentBackground)
@@ -265,6 +274,9 @@ class LoginWindow(QtWidgets.QWidget):
                 font-size: 14px; 
             } 
         """)
+        regex = QRegularExpression(r"\d*")
+        validator = QRegularExpressionValidator(regex, self.edit_doc)
+        self.edit_doc.setValidator(validator)
         # Solo permitir dígitos, hasta 12 caracteres
         hdoc.addWidget(self.edit_doc, stretch=1)
         vbox.addLayout(hdoc)
@@ -320,10 +332,9 @@ class LoginWindow(QtWidgets.QWidget):
                 color: white; 
                 font-size: 18px;  /* Tamaño aumentado */
                 font-weight: bold;  /* Negrita */
-                text-decoration: underline;
             } 
             QPushButton:hover { 
-                color: #FF7043; 
+                color: #339CFF; 
             } 
         """)
         btn_forgot_password.clicked.connect(self.on_forgot_password)
@@ -362,20 +373,14 @@ class LoginWindow(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "Usuario inactivo", "Tu cuenta no está activa. Contacta al administrador.")
             return
 
-        # Lanza dashboard.py en un proceso separado
-        dashboard_script = resource_path("dashboard.py")
-        subprocess.Popen([
-            sys.executable,
-            dashboard_script,
-            str(user_id),
-            first_name,
-            last_name
-        ], cwd=os.path.dirname(dashboard_script))
-        self.close()
+        self.hide()  # oculto el login
+        self.dashboard = DashboardWindow(user_id, first_name, last_name)
+        self.dashboard.show()
 
     def on_forgot_password(self):
         # Aquí llamamos a la ventana de recuperación de contraseña
-        self.recover_window = RecuperarContrasenaWindow()
+        self.close()
+        self.recover_window = RecuperarContrasenaWindow(login_window=self)
         self.recover_window.show()
 
 # Función para enviar código por correo
@@ -398,7 +403,7 @@ def enviar_codigo_por_email(email_destino):
         <html>
             <body style="font-family: Arial, sans-serif; color: #333; background-color: #f4f4f9; padding: 20px;">
                 <div style="text-align: center; padding: 20px;">
-                    <img src="cid:logo_img" alt="Logo" style="width: 150px; margin-bottom: 20px;">
+                    <img src="https://raw.githubusercontent.com/JhoanDuarte/Capturador_Actualizacioness/main/LogoImg.png" alt="Logo" style="width: 150px; margin-bottom: 20px;">
                     <h2 style="color: #4CAF50;">Recuperación de Contraseña</h2>
                     <p style="font-size: 16px;">¡Hola! Para completar el proceso de recuperación de contraseña, por favor ingresa el siguiente código:</p>
                     <h3 style="font-size: 28px; color: #4CAF50; font-weight: bold;">{codigo}</h3>
@@ -422,12 +427,6 @@ def enviar_codigo_por_email(email_destino):
         # Adjuntar el cuerpo HTML
         msg.attach(MIMEText(mensaje, 'html', 'utf-8'))
 
-        # Adjuntar la imagen del logo
-        with open('LogoImg.png', 'rb') as img_file:
-            img = MIMEImage(img_file.read())
-            img.add_header('Content-ID', '<logo_img>')
-            msg.attach(img)
-
         # Enviar el mensaje
         server.login(servidor_email, contrasena)
         server.sendmail(servidor_email, email_destino, msg.as_string())
@@ -435,109 +434,124 @@ def enviar_codigo_por_email(email_destino):
 
         return codigo  # Retorna el código para su validación
     except Exception as e:
-        # Mostrar mensaje de error en la ventana emergente
-        messagebox.critical(None, "Error al Enviar Correo", f"Hubo un problema al enviar el correo: {str(e)}")
+        error_box = QMessageBox()
+        error_box.setIcon(QMessageBox.Critical)
+        error_box.setWindowTitle("Error al Enviar Correo")
+        error_box.setText(f"Hubo un problema al enviar el correo:\n{str(e)}")
+        error_box.exec_()
         return None
 
 class RecuperarContrasenaWindow(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, login_window):
         super().__init__()
+        self.login_window = login_window
         self.setWindowTitle("Recuperar Contraseña")
         self.resize(400, 300)
+        # — Fondo (misma imagen que en Login) —
+        bg_path = resource_path("Fondo.png")
+        if os.path.exists(bg_path):
+            palette = QtGui.QPalette()
+            pix = QtGui.QPixmap(bg_path).scaled(self.size(), QtCore.Qt.IgnoreAspectRatio)
+            palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
+            self.setPalette(palette)
 
-        # Fondo más oscuro
-        self.setStyleSheet("""
-            background: #121212;  /* Fondo oscuro */
-            color: white;
-            font-family: 'Arial', sans-serif;
+        # — Panel semitransparente y redondeado —
+        self.panel = QtWidgets.QFrame(self)
+        self.panel.setStyleSheet("""
+            QFrame {
+                background-color: rgba(0, 0, 0, 150);
+                border-radius: 20px;
+            }
         """)
 
-        main_layout = QtWidgets.QVBoxLayout(self)
-        
-        # Título centrado y con un estilo más moderno
-        lbl_title = QtWidgets.QLabel("Recuperar Contraseña")
-        lbl_title.setStyleSheet("""
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 20px;
-        """)
+        # — Layout interno del panel —
+        vbox = QtWidgets.QVBoxLayout(self.panel)
+        vbox.setContentsMargins(40, 30, 40, 30)
+        vbox.setSpacing(20)
+
+        # Título
+        lbl_title = QtWidgets.QLabel("Recuperar Contraseña", self.panel)
         lbl_title.setAlignment(QtCore.Qt.AlignCenter)
-        main_layout.addWidget(lbl_title)
+        lbl_title.setStyleSheet("color: white; font-size: 24px; font-weight: bold; background: transparent;")
+        vbox.addWidget(lbl_title)
 
-        # Espacio para separar el título y el campo
-        main_layout.addStretch(1)
+        vbox.addStretch(1)
 
-        # Ingreso del número de documento
+        # Documento
         hdoc = QtWidgets.QHBoxLayout()
-        lbl_doc = QtWidgets.QLabel("📄")
+        lbl_doc = QtWidgets.QLabel("📄", self.panel)
         lbl_doc.setFixedWidth(28)
         lbl_doc.setStyleSheet("font-size: 22px; background: transparent;")
         hdoc.addWidget(lbl_doc)
 
-        lbl_doctxt = QtWidgets.QLabel("Documento:")
-        lbl_doctxt.setStyleSheet("""
-            color: white;
-            background: transparent;
-            font-size: 16px;
-            font-weight: bold;
-        """)
+        lbl_doctxt = QtWidgets.QLabel("Documento:", self.panel)
+        lbl_doctxt.setStyleSheet("color: white; font-size: 16px; font-weight: bold; background: transparent;")
         hdoc.addWidget(lbl_doctxt)
 
-        self.edit_doc = QtWidgets.QLineEdit()
+        self.edit_doc = QtWidgets.QLineEdit(self.panel)
         self.edit_doc.setPlaceholderText("12345678")
         self.edit_doc.setStyleSheet("""
             QLineEdit {
-                background-color: rgba(0, 0, 0, 150);
+                background-color: rgba(0,0,0,200);
                 color: white;
-                border-radius: 12px;
-                padding: 10px;
-                font-size: 16px;
-                border: 2px solid #333;
+                border-radius: 15px;
+                padding: 8px 12px;
+                font-size: 14px;
             }
             QLineEdit:focus {
-                border-color: #4f90e2;
+                border: 1px solid #339CFF;
             }
         """)
+        # Solo dígitos
+        regex = QRegularExpression(r"\d*")
+        validator = QRegularExpressionValidator(regex, self.edit_doc)
+        self.edit_doc.setValidator(validator)
         hdoc.addWidget(self.edit_doc, stretch=1)
-        main_layout.addLayout(hdoc)
+        vbox.addLayout(hdoc)
 
-        # Espacio intermedio
-        main_layout.addStretch(1)
+        vbox.addStretch(1)
 
-        # Botón de enviar código con estilo moderno
-        btn_send_code = QtWidgets.QPushButton("Enviar código")
-        btn_send_code.setStyleSheet("""
+        # Botón Enviar código
+        btn_send = QtWidgets.QPushButton("Enviar código", self.panel)
+        btn_send.setFixedSize(200, 50)
+        btn_send.setStyleSheet("""
             QPushButton {
+                background-color: #007BFF;
                 color: white;
-                background-color: #339CFF;
                 border-radius: 25px;
                 font-size: 16px;
-                border: none;
-                padding: 15px 30px;
             }
             QPushButton:hover {
-                background-color: #007BFF;
-            }
-            QPushButton:pressed {
-                background-color: #005bb5;
+                background-color: #339CFF;
             }
         """)
-        btn_send_code.clicked.connect(self.enviar_codigo)
-        main_layout.addWidget(btn_send_code, alignment=QtCore.Qt.AlignCenter)
+        btn_send.clicked.connect(self.enviar_codigo)
+        vbox.addWidget(btn_send, alignment=QtCore.Qt.AlignCenter)
 
-        # Espacio final para separar el botón del borde inferior
-        main_layout.addStretch(2)
+        vbox.addStretch(2)
+
+        # — Centrar panel en la ventana —
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.addStretch()
+        h_center = QtWidgets.QHBoxLayout()
+        h_center.addStretch()
+        h_center.addWidget(self.panel)
+        h_center.addStretch()
+        main_layout.addLayout(h_center)
+        main_layout.addStretch()
+        
+    def closeEvent(self, event):
+        # cuando cierras esta ventana, reaparece el login
+        if event.spontaneous():
+            self.login_window.show()
+        event.accept()
 
     def enviar_codigo(self):
         num_doc = self.edit_doc.text().strip()
-
         if not num_doc:
             QtWidgets.QMessageBox.warning(self, "Datos faltantes", "Debe ingresar su documento.")
             return
 
-        # Buscar el correo del usuario en la base de datos
         cursor = conn.cursor()
         cursor.execute("SELECT CORREO FROM USERS WHERE NUM_DOC = %s", (num_doc,))
         row = cursor.fetchone()
@@ -547,157 +561,198 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "Usuario no encontrado", "No se encontró un usuario con ese documento.")
             return
 
-        email_destino = row[0]
-
-        # Enviar el código
-        codigo = enviar_codigo_por_email(email_destino)
+        codigo = enviar_codigo_por_email(row[0])
         if codigo:
             self.codigo_recibido = codigo
             QtWidgets.QMessageBox.information(self, "Código Enviado", "Te hemos enviado un código por correo electrónico.")
+            self.close()
             self.mostrar_ventana_codigo()
         else:
             QtWidgets.QMessageBox.critical(self, "Error", "Hubo un problema al enviar el correo.")
 
     def mostrar_ventana_codigo(self):
-        # Crear una nueva ventana para ingresar el código
-        self.codigo_window = QtWidgets.QWidget()
-        self.codigo_window.setWindowTitle("Verificar Código")
-        self.codigo_window.resize(400, 300)
-        self.codigo_window.setStyleSheet("background: #121212; color: white;")
+        win = QtWidgets.QWidget()
+        win.login_window = self.login_window
+        win.setWindowTitle("Verificar Código")
+        win.resize(400, 300)
+        # Mismo fondo
+        bg_path = resource_path("Fondo.png")
+        if os.path.exists(bg_path):
+            pal = QtGui.QPalette()
+            pix = QtGui.QPixmap(bg_path).scaled(win.size(), QtCore.Qt.IgnoreAspectRatio)
+            pal.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
+            win.setPalette(pal)
 
-        layout = QtWidgets.QVBoxLayout(self.codigo_window)
-
-        lbl_text = QtWidgets.QLabel("Ingresa el código de recuperación enviado a tu correo:")
-        lbl_text.setStyleSheet("""
-            color: white;
-            font-size: 16px;
-            font-weight: normal;
-            margin-bottom: 20px;
+        panel = QtWidgets.QFrame(win)
+        panel.setStyleSheet("""
+            QFrame {
+                background-color: rgba(0,0,0,150);
+                border-radius: 20px;
+            }
         """)
-        layout.addWidget(lbl_text)
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(40, 30, 40, 30)
+        layout.setSpacing(20)
 
-        self.edit_codigo = QtWidgets.QLineEdit()
+        lbl = QtWidgets.QLabel("Ingresa el código de recuperación enviado a tu correo:", panel)
+        lbl.setAlignment(QtCore.Qt.AlignCenter)
+        lbl.setStyleSheet("color: white; font-size: 16px; font-weight: bold; background: transparent;")
+        layout.addWidget(lbl)
+
+        self.edit_codigo = QtWidgets.QLineEdit(panel)
         self.edit_codigo.setPlaceholderText("Código")
         self.edit_codigo.setStyleSheet("""
             QLineEdit {
-                background-color: rgba(0, 0, 0, 150);
+                background-color: rgba(0,0,0,200);
                 color: white;
-                border-radius: 12px;
-                padding: 10px;
-                font-size: 16px;
-                border: 2px solid #333;
+                border-radius: 15px;
+                padding: 8px 12px;
+                font-size: 14px;
             }
             QLineEdit:focus {
-                border-color: #4f90e2;
+                border: 1px solid #339CFF;
             }
         """)
         layout.addWidget(self.edit_codigo)
 
-        btn_verify = QtWidgets.QPushButton("Verificar Código")
-        btn_verify.setStyleSheet("""
+        btn = QtWidgets.QPushButton("Verificar Código", panel)
+        btn.setFixedSize(200, 50)
+        btn.setStyleSheet("""
             QPushButton {
-                background-color: #339CFF;
+                background-color: #007BFF;
                 color: white;
                 border-radius: 25px;
                 font-size: 16px;
-                border: none;
-                padding: 15px 30px;
             }
             QPushButton:hover {
                 background-color: #339CFF;
             }
-            QPushButton:pressed {
-                background-color: #005bb5;
-            }
         """)
-        btn_verify.clicked.connect(self.verificar_codigo)
-        layout.addWidget(btn_verify)
+        btn.clicked.connect(self.verificar_codigo)
+        layout.addWidget(btn, alignment=QtCore.Qt.AlignCenter)
 
-        self.codigo_window.show()
+        # Centrar
+        main = QtWidgets.QVBoxLayout(win)
+        main.addStretch()
+        hc = QtWidgets.QHBoxLayout()
+        hc.addStretch()
+        hc.addWidget(panel)
+        hc.addStretch()
+        main.addLayout(hc)
+        main.addStretch()
+
+        def _on_close(event):
+                    # solo si el cierre es manual por el usuario
+            if event.spontaneous():
+                win.login_window.show()
+            event.accept()
+        win.closeEvent = _on_close
+
+                # 5) Guardamos y mostramos
+        self.codigo_window = win
+        win.show()
 
     def verificar_codigo(self):
-        # Verificar que el código ingresado sea correcto
-        codigo_ingresado = self.edit_codigo.text().strip()
-
-        if codigo_ingresado == self.codigo_recibido:
+        if self.edit_codigo.text().strip() == getattr(self, "codigo_recibido", ""):
+            self.codigo_window.close()
             self.mostrar_ventana_cambio_contrasena()
         else:
             QtWidgets.QMessageBox.warning(self, "Código incorrecto", "El código ingresado es incorrecto.")
 
     def mostrar_ventana_cambio_contrasena(self):
-        # Ventana para cambiar la contraseña
-        self.cambio_window = QtWidgets.QWidget()
-        self.cambio_window.setWindowTitle("Cambiar Contraseña")
-        self.cambio_window.resize(400, 300)
-        self.cambio_window.setStyleSheet("background: #121212; color: white;")
+        win = QtWidgets.QWidget()
+        win.login_window = self.login_window
+        win.setWindowTitle("Cambiar Contraseña")
+        win.resize(400, 300)
+        # Mismo fondo
+        bg_path = resource_path("Fondo.png")
+        if os.path.exists(bg_path):
+            pal = QtGui.QPalette()
+            pix = QtGui.QPixmap(bg_path).scaled(win.size(), QtCore.Qt.IgnoreAspectRatio)
+            pal.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
+            win.setPalette(pal)
 
-        layout = QtWidgets.QVBoxLayout(self.cambio_window)
-
-        lbl_text = QtWidgets.QLabel("Ingresa tu nueva contraseña:")
-        lbl_text.setStyleSheet("""
-            color: white;
-            font-size: 16px;
-            font-weight: normal;
-            margin-bottom: 20px;
+        panel = QtWidgets.QFrame(win)
+        panel.setStyleSheet("""
+            QFrame {
+                background-color: rgba(0,0,0,150);
+                border-radius: 20px;
+            }
         """)
-        layout.addWidget(lbl_text)
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(40, 30, 40, 30)
+        layout.setSpacing(20)
 
-        self.edit_new_pwd = QtWidgets.QLineEdit()
+        lbl = QtWidgets.QLabel("Ingresa tu nueva contraseña:", panel)
+        lbl.setAlignment(QtCore.Qt.AlignCenter)
+        lbl.setStyleSheet("color: white; font-size: 16px; font-weight: bold; background: transparent;")
+        layout.addWidget(lbl)
+
+        self.edit_new_pwd = QtWidgets.QLineEdit(panel)
         self.edit_new_pwd.setEchoMode(QtWidgets.QLineEdit.Password)
         self.edit_new_pwd.setPlaceholderText("Nueva contraseña")
         self.edit_new_pwd.setStyleSheet("""
             QLineEdit {
-                background-color: rgba(0, 0, 0, 150);
+                background-color: rgba(0,0,0,200);
                 color: white;
-                border-radius: 12px;
-                padding: 10px;
-                font-size: 16px;
-                border: 2px solid #333;
+                border-radius: 15px;
+                padding: 8px 12px;
+                font-size: 14px;
             }
             QLineEdit:focus {
-                border-color: #4f90e2;
+                border: 1px solid #339CFF;
             }
         """)
         layout.addWidget(self.edit_new_pwd)
 
-        btn_change_pwd = QtWidgets.QPushButton("Cambiar Contraseña")
-        btn_change_pwd.setStyleSheet("""
+        btn = QtWidgets.QPushButton("Cambiar Contraseña", panel)
+        btn.setFixedSize(200, 50)
+        btn.setStyleSheet("""
             QPushButton {
-                background-color: #339CFF;
+                background-color: #007BFF;
                 color: white;
                 border-radius: 25px;
                 font-size: 16px;
-                border: none;
-                padding: 15px 30px;
             }
             QPushButton:hover {
                 background-color: #339CFF;
             }
-            QPushButton:pressed {
-                background-color: #005bb5;
-            }
         """)
-        btn_change_pwd.clicked.connect(self.cambiar_contrasena)
-        layout.addWidget(btn_change_pwd)
+        btn.clicked.connect(self.cambiar_contrasena)
+        layout.addWidget(btn, alignment=QtCore.Qt.AlignCenter)
 
-        self.cambio_window.show()
+        # Centrar
+        main = QtWidgets.QVBoxLayout(win)
+        main.addStretch()
+        hc = QtWidgets.QHBoxLayout()
+        hc.addStretch()
+        hc.addWidget(panel)
+        hc.addStretch()
+        main.addLayout(hc)
+        main.addStretch()
+        
+        def _on_close(event):
+            if event.spontaneous():
+                win.login_window.show()
+            event.accept()
+        win.closeEvent = _on_close
+
+        self.cambio_window = win
+        win.show()
 
     def cambiar_contrasena(self):
-        # Cambiar la contraseña en la base de datos
         new_pwd = self.edit_new_pwd.text().strip()
-
         if not new_pwd:
             QtWidgets.QMessageBox.warning(self, "Contraseña vacía", "La contraseña no puede estar vacía.")
             return
 
-        # Encriptar la nueva contraseña
-        hashed_pwd = bcrypt.hashpw(new_pwd.encode('utf-8'), bcrypt.gensalt())
+        # … aquí guardas la nueva contraseña en la BD …
 
-        # Aquí deberías guardar la contraseña en la base de datos (simulación)
-        print(f"Contraseña cambiada: {hashed_pwd.decode('utf-8')}")
         QtWidgets.QMessageBox.information(self, "Contraseña cambiada", "Tu contraseña ha sido cambiada exitosamente.")
-        self.cambio_window.destroy()
-        self.destroy()
+        # Cierra la ventana de cambio
+        self.cambio_window.close()
+        # Vuelve a mostrar el login
+        self.login_window.show()
 
 
 if __name__ == "__main__":

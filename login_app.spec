@@ -21,6 +21,7 @@ a = Analysis(
     datas=[
         ('.env', '.'),
         ('Fondo.png', '.'),
+        ('Fondo2.png', '.'),
         # Qt platform plugin
         (r'C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwindows.dll', 'platforms'),
         # Dashboard y logo

@@ -20,8 +20,6 @@ import re
 import subprocess
 import tkinter as tk
 from io import BytesIO
-from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGraphicsBlurEffect
 from tkinter import filedialog, messagebox, ttk
 
 # — Terceros —
@@ -39,10 +37,11 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 import traceback
-from PIL import Image, ImageDraw, ImageTk
 
 # — Módulos propios —
 from db_connection import conectar_sql_server
+
+
 
 def safe_destroy(win):
     # cancela todos los after del intérprete
@@ -56,6 +55,12 @@ def safe_destroy(win):
         pass
     win.destroy()
 
+
+
+# Tu tema y apariencia
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
+
 def load_icon_from_url(url, size):
     resp = requests.get(url)
     resp.raise_for_status()
@@ -65,6 +70,481 @@ def load_icon_from_url(url, size):
                                  output_height=size[1])
     img = Image.open(BytesIO(png_bytes))
     return ctk.CTkImage(light_image=img, dark_image=img, size=size)
+
+
+def cargar_paquete(root, conn):
+    
+   # 0) Selección de Tipo de Paquete
+    sel = ctk.CTkToplevel(root)
+    sel.title("Seleccione Tipo de Paquete")
+
+    # Variable para saber si aceptó o cerró
+    accepted = tk.BooleanVar(value=False)
+    tipo_paquete_var = tk.StringVar(value="DIGITACION")
+
+    ctk.CTkLabel(sel, text="Tipo de Paquete:").pack(pady=10)
+    ctk.CTkOptionMenu(sel,
+        values=["DIGITACION", "CALIDAD"],
+        variable=tipo_paquete_var
+    ).pack(pady=5)
+
+    def on_accept():
+        accepted.set(True)
+        sel.destroy()
+
+    # Botones Aceptar y Cancelar
+    ctk.CTkButton(sel, text="Aceptar",   command=on_accept).pack(side="left", padx=20, pady=10)
+    ctk.CTkButton(sel, text="Cancelar", command=sel.destroy).pack(side="right", padx=20, pady=10)
+
+    sel.grab_set()
+    root.wait_window(sel)
+
+    # Si cerró o pulsó Cancelar, salimos sin seguir
+    if not accepted.get():
+        return
+
+    tipo_paquete = tipo_paquete_var.get()
+
+    # 1) Definir encabezados que esperamos
+    expected_headers = {
+        "RADICADO", "NIT", "RAZON_SOCIAL", "FACTURA",
+        "VALOR_FACTURA", "FECHA RADICACION",
+        "ESTADO_FACTURA", "IMAGEN",
+        "RADICADO_IMAGEN", "LINEA", "ID ASIGNACION",
+        "ESTADO PYS", "OBSERVACION PYS", "LINEA PYS",
+        "RANGOS", "Def"
+    }
+
+    # 2) Seleccionar archivo
+    path = filedialog.askopenfilename(
+        parent=root,
+        title="Selecciona el archivo de paquete",
+        filetypes=[("Excel/CSV", "*.xlsx *.xls *.csv"), ("Todos", "*.*")]
+    )
+    if not path:
+        return
+
+    # 3) Leer con pandas
+    try:
+        if path.lower().endswith(('.xls', '.xlsx')):
+            df = pd.read_excel(path)
+        else:
+            df = pd.read_csv(path)
+    except Exception:
+        messagebox.showerror("Error lectura", "No se pudo leer el archivo. Verifica formato.")
+        return
+
+    # 4) Validar encabezados
+    actual_headers = set(df.columns)
+    missing = expected_headers - actual_headers
+    extra   = actual_headers - expected_headers
+    if missing or extra:
+        msg = []
+        if missing:
+            msg.append("Faltan columnas:\n  • " + "\n  • ".join(sorted(missing)))
+        if extra:
+            msg.append("Columnas inesperadas:\n  • " + "\n  • ".join(sorted(extra)))
+        messagebox.showerror(
+            "Encabezados incorrectos",
+            "El archivo no tiene la estructura esperada.\n\n"
+            "Esperados:\n  • " + "\n  • ".join(sorted(expected_headers)) +
+            "\n\nEncontrados:\n  • " + "\n  • ".join(sorted(actual_headers)) +
+            "\n\n" + "\n\n".join(msg)
+        )
+        return
+
+    total = len(df)
+    if total == 0:
+        messagebox.showinfo("Sin datos", "El archivo está vacío.")
+        return
+
+    # 5) Detectar RADICADOS ya existentes
+    try:
+        rad_list = df["RADICADO"].dropna().astype(int).unique().tolist()
+    except Exception:
+        messagebox.showerror(
+            "Error en RADICADO",
+            "No se pudieron convertir los valores de RADICADO a enteros.\n"
+            "Verifica que esa columna contenga sólo números."
+        )
+        return
+
+    if rad_list:
+        in_clause = ",".join(str(r) for r in rad_list)
+        sql = f"SELECT RADICADO FROM ASIGNACION_TIPIFICACION WHERE RADICADO IN ({in_clause})"
+        cur = conn.cursor()
+        try:
+            cur.execute(sql)
+            existentes = sorted(r[0] for r in cur.fetchall())
+        except Exception as e:
+            messagebox.showerror(
+                "Error al verificar duplicados",
+                f"No se pudo comprobar duplicados:\n\n{e}"
+            )
+            cur.close()
+            return
+        cur.close()
+
+        if existentes:
+            messagebox.showerror(
+                "Radicados duplicados",
+                "Los siguientes radicados ya existen:\n\n" +
+                "\n".join(f"• {r}" for r in existentes)
+            )
+            return
+
+    # 6) Calcular NUM_PAQUETE → tomo el mayor de TODOS los registros
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT ISNULL(MAX(NUM_PAQUETE), 0) "
+        "FROM ASIGNACION_TIPIFICACION "
+        "WHERE TIPO_PAQUETE = %s",
+        (tipo_paquete,)
+    )
+    ultimo = cur.fetchone()[0]   # si no hay ninguno, devuelve 0
+    NUM_PAQUETE = ultimo + 1
+    cur.close()
+
+    # DEBUG opcional
+    print(f"[DEBUG] Nuevo NUM_PAQUETE para {tipo_paquete} → {NUM_PAQUETE}")
+
+
+    # 7) Activar IDENTITY_INSERT
+    cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION ON;")
+
+    # 8) Crear barra de progreso
+    progress_window = ctk.CTkToplevel(root)
+    progress_window.title("Progreso de Carga")
+    progress_window.geometry("400x150")
+    progress_label = ctk.CTkLabel(progress_window, text="Cargando registros...")
+    progress_label.pack(pady=10)
+    
+    progress_bar = ctk.CTkProgressBar(progress_window, orientation="horizontal", mode="determinate")
+    progress_bar.pack(padx=20, pady=20, fill="x")
+
+    # Inicializar la barra de progreso en 0
+    progress_bar.set(0)
+    
+    # 9) Preparamos la lista de parámetros
+    params_list = []
+    for idx, row in df.iterrows():
+        try:
+            # (mismos sanitizados que antes…)
+            radicado       = int(row["RADICADO"])
+            nit            = int(row["NIT"])
+            razon          = str(row["RAZON_SOCIAL"])
+            factura        = str(row["FACTURA"])
+            valor_factura  = int(row["VALOR_FACTURA"])
+            fecha_factura = None
+            if "FECHA FACTURA" in df.columns:
+                v = row["FECHA FACTURA"]
+                fecha_factura = None if pd.isna(v) else str(v)
+            num_doc = None
+            tipo_doc_id = None
+            if "TIPO DOC" in df.columns:
+                v = row["TIPO DOC"]
+                tipo_doc_id = None if pd.isna(v) else str(v)
+            num_doc = None
+            if "NUM DOC" in df.columns:
+                v = row["NUM DOC"]
+                num_doc = None if pd.isna(v) else int(v)
+            fecha_rad      = row["FECHA RADICACION"]
+            estado_factura = str(row.get("ESTADO_FACTURA","")).strip() or None
+            imagen         = str(row.get("IMAGEN","")).strip() or None
+
+            def s(col):
+                v = row.get(col)
+                return None if pd.isna(v) else str(v)
+            rad_img   = s("RADICADO_IMAGEN")
+            linea     = s("LINEA")
+            id_asig   = s("ID ASIGNACION")
+            est_pys   = s("ESTADO PYS")
+            obs_pys   = s("OBSERVACION PYS")
+            linea_pys = s("LINEA PYS")
+            rangos    = s("RANGOS")
+            def_col   = s("Def")
+
+            params_list.append((
+                radicado, nit, razon, factura, valor_factura,
+                fecha_factura, fecha_rad, tipo_doc_id, num_doc,
+                estado_factura, imagen,
+                rad_img, linea, id_asig, est_pys,
+                obs_pys, linea_pys, rangos, def_col,tipo_paquete,
+                NUM_PAQUETE,
+            ))
+        except Exception:
+            print(f"Error preparando fila {idx}:")
+            traceback.print_exc()
+
+        # Actualizar la barra de progreso
+        progress_bar.set(idx + 1)
+
+    # 10) Ejecutamos todos de golpe
+    cur.executemany(
+        """
+        INSERT INTO ASIGNACION_TIPIFICACION
+          (RADICADO, NIT, RAZON_SOCIAL, FACTURA, VALOR_FACTURA,
+           FECHA_FACTURA, FECHA_RADICACION, TIPO_DOC_ID,
+           NUM_DOC, ESTADO_FACTURA, IMAGEN, RADICADO_IMAGEN,
+           LINEA, ID_ASIGNACION, ESTADO_PYS, OBSERVACION_PYS,
+           LINEA_PYS, RANGOS, DEF, TIPO_PAQUETE, STATUS_ID, NUM_PAQUETE)
+        VALUES
+      (%s, %s, %s, %s, %s, %s, %s, %s,
+       %s, %s, %s, %s, %s, %s, %s, %s,
+       %s, %s, %s, %s, 1, %s)
+        """,
+        params_list
+    )
+    inserted = len(params_list)
+
+    # 11) Desactivar IDENTITY_INSERT y commit
+    cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION OFF;")
+    conn.commit()
+    cur.close()
+
+    # Cerrar la ventana de progreso
+    progress_window.destroy()
+
+    messagebox.showinfo(
+        "Carga completa",
+        f"Total filas: {total}\nInsertadas: {inserted}\nPaquete: {NUM_PAQUETE}"
+    )
+
+    # 12) Selección de campos
+    sel = ctk.CTkToplevel(root)
+    sel.title(f"Paquete {NUM_PAQUETE}: Selecciona campos")
+    campos = [
+        "FECHA_SERVICIO", "FECHA_FINAL", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO",
+        "AUTORIZACION", "CODIGO_SERVICIO", "CANTIDAD", "VLR_UNITARIO",
+        "COPAGO", "OBSERVACION"
+    ]
+    vars_chk = {}
+    for campo in campos:
+        vars_chk[campo] = tk.BooleanVar(value=True)
+        ctk.CTkCheckBox(sel, text=campo, variable=vars_chk[campo]).pack(
+            anchor="w", padx=20, pady=2
+        )
+
+    def guardar_campos(paquete=NUM_PAQUETE):
+        cur2 = conn.cursor()
+        for campo, var in vars_chk.items():
+            if var.get():
+                cur2.execute(
+                    "INSERT INTO PAQUETE_CAMPOS (NUM_PAQUETE, campo) VALUES (%s, %s)",
+                    (paquete, campo)
+                )
+        conn.commit()
+        cur2.close()
+        sel.destroy()
+        messagebox.showinfo("Guardado", f"Campos del paquete {NUM_PAQUETE} guardados.")
+
+    ctk.CTkButton(sel, text="Guardar", command=guardar_campos).pack(pady=10)
+
+def crear_usuario(root, conn):
+    # Validaciones
+    def only_upper_letters(input_str):
+        # Acepta solo letras mayúsculas y la letra "ñ"
+        if all(c.isalpha() or c == 'ñ' or c == 'Ñ' for c in input_str):
+            return True
+        else:
+            return False
+
+    def only_digits(P):
+        return P == "" or P.isdigit()
+
+    def validate_email(email):
+        # Validación de correo utilizando una expresión regular simple
+        regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+        return re.match(regex, email) is not None
+
+    vcmd_letters = (root.register(only_upper_letters), '%P')
+    vcmd_digits  = (root.register(only_digits), '%P')
+
+    # Crear ventana secundaria
+    top = ctk.CTkToplevel(root)
+    top.title("Crear Usuario")
+    top.geometry("500x600")
+    top.resizable(False, False)
+
+    # Recuperar catálogos
+    cur = conn.cursor()
+    cur.execute("SELECT ID, NAME FROM TIPO_DOC")
+    tipos = cur.fetchall()
+    cur.execute("SELECT ID, NAME FROM STATUS WHERE ID IN (%s, %s)", (5, 6))
+    statuses = cur.fetchall()
+    cur.execute("SELECT ID, NAME FROM ROL")
+    roles = cur.fetchall()
+    cur.close()
+
+    tipo_map   = {name: tid for tid, name in tipos}
+    status_map = {name: sid for sid, name in statuses}
+
+    # Variables
+    fn_var   = tk.StringVar()
+    ln_var   = tk.StringVar()
+    doc_var  = tk.StringVar()
+    pwd_var  = tk.StringVar()
+    email_var = tk.StringVar()  # Variable para el correo
+    tipo_var = tk.StringVar(value=tipos[0][1] if tipos else "")
+    stat_var = tk.StringVar(value=statuses[0][1] if statuses else "")
+
+    # Frame
+    top.grid_rowconfigure(0, weight=1)
+    top.grid_columnconfigure(0, weight=1)
+    frm = ctk.CTkFrame(top, corner_radius=8)
+    frm.grid(row=0, column=0, padx=20, pady=20)
+
+    # Definición de campos
+    labels = [
+        ("Nombres:", fn_var, "entry_upper", vcmd_letters),
+        ("Apellidos:", ln_var, "entry_upper", vcmd_letters),
+        ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
+        ("N° Documento:", doc_var, "entry_digit", vcmd_digits),
+        ("Correo:", email_var, "entry_email", None),  # Nuevo campo correo
+        ("Contraseña:", pwd_var, "entry_pass", None),
+        ("Status:", stat_var, "combo", [n for _, n in statuses])
+    ]
+
+    for i, (text, var, kind, cmd) in enumerate(labels):
+        ctk.CTkLabel(frm, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
+        if kind == "entry_upper":
+            widget = ctk.CTkEntry(
+                frm,
+                textvariable=var,
+                width=300,
+                validate="key",
+                validatecommand=cmd
+            )
+            # Convierte a mayúsculas al soltar cada tecla
+            widget.bind("<KeyRelease>", lambda e, v=var: v.set(v.get().upper()))
+
+        elif kind == "entry_digit":
+            widget = ctk.CTkEntry(
+                frm,
+                textvariable=var,
+                width=300,
+                validate="key",
+                validatecommand=cmd
+            )
+
+        elif kind == "entry_pass":
+            widget = ctk.CTkEntry(
+                frm,
+                textvariable=var,
+                show="*",
+                width=300
+            )
+
+        elif kind == "entry_email":
+            widget = ctk.CTkEntry(
+                frm,
+                textvariable=var,
+                width=300
+            )
+
+        else:  # combo
+            widget = ctk.CTkComboBox(
+                frm,
+                values=cmd,
+                variable=var,
+                width=300
+            )
+
+        widget.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
+        if i == 0:
+            widget.focus()
+
+    # Checkboxes de roles
+    ctk.CTkLabel(frm, text="Roles:").grid(row=len(labels), column=0, sticky="nw", pady=(10, 0))
+    rol_vars = {}
+    chk_frame = ctk.CTkFrame(frm)
+    chk_frame.grid(row=len(labels), column=1, sticky="w", pady=(10, 0))
+    for j, (rid, rname) in enumerate(roles):
+        var_chk = tk.BooleanVar()
+        rol_vars[rid] = var_chk
+        ctk.CTkCheckBox(chk_frame, text=rname, variable=var_chk).grid(row=j, column=0, sticky="w", pady=2)
+
+    # Función para guardar usuario
+    def guardar_usuario(event=None):
+        # Validar campos
+        if not all([fn_var.get(), ln_var.get(), doc_var.get(), pwd_var.get(), email_var.get()]):
+            messagebox.showwarning("Faltan datos", "Completa todos los campos.")
+            return
+
+        # Validar correo
+        email = email_var.get().strip()
+        if not validate_email(email):
+            messagebox.showwarning("Correo inválido", "Por favor ingresa un correo válido.")
+            return
+
+        # Validar longitud de la contraseña
+        if len(pwd_var.get().strip()) < 6:
+            messagebox.showwarning("Contraseña inválida", "La contraseña debe tener al menos 6 caracteres.")
+            return
+
+        # Validar si al menos un rol ha sido seleccionado
+        if not any(v.get() for v in rol_vars.values()):
+            messagebox.showwarning("Faltan roles", "Debe seleccionar al menos un rol para el usuario.")
+            return
+
+        try:
+            first_name = fn_var.get().strip()
+            last_name  = ln_var.get().strip()
+            num_doc    = int(doc_var.get().strip())
+            email_address = email  # Correo ingresado por el usuario
+            type_id    = tipo_map[tipo_var.get()]
+
+            # Verificar duplicado
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM USERS WHERE TYPE_DOC_ID = %s AND NUM_DOC = %s",
+                (type_id, num_doc)
+            )
+            if cursor.fetchone()[0] > 0:
+                cursor.close()
+                messagebox.showerror("Duplicado", "Ya existe un usuario con ese tipo y número de documento.")
+                return
+
+            # Cifrar contraseña con bcrypt
+            raw_pwd   = pwd_var.get().strip()
+            pwd_bytes = raw_pwd.encode('utf-8')
+            salt      = bcrypt.gensalt(rounds=12)
+            pwd_hash  = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+            status_id = status_map[stat_var.get()]
+            selected  = [rid for rid, v in rol_vars.items() if v.get()]
+
+            # Insertar usuario
+            cursor.execute(
+                """
+                INSERT INTO USERS 
+                  (FIRST_NAME, LAST_NAME, TYPE_DOC_ID, NUM_DOC, PASSWORD, CORREO, STATUS_ID)
+                OUTPUT INSERTED.ID
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (first_name, last_name, type_id, num_doc, pwd_hash, email_address, status_id)
+            )
+            new_id = cursor.fetchone()[0]
+
+            # Insertar roles
+            for rid in selected:
+                cursor.execute(
+                    "INSERT INTO USER_ROLES (USER_ID, ROL_ID) VALUES (%s, %s)",
+                    (new_id, rid)
+                )
+
+            conn.commit()
+            cursor.close()
+            messagebox.showinfo("Éxito", f"Usuario creado con ID {new_id}")
+            top.destroy()
+
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    # Botón Guardar
+    btn = ctk.CTkButton(frm, text="Guardar Usuario", command=guardar_usuario, width=200)
+    btn.grid(row=len(labels)+1, column=0, columnspan=2, pady=20)
+    top.bind("<Return>", guardar_usuario)
 
 
 class AutocompleteEntry(ctk.CTkEntry):
@@ -242,7 +722,10 @@ class FullMatchAutocompleteEntry(AutocompleteEntry):
         w = self.winfo_width()
         h = min(100, len(matches) * 20)
         self._listbox_window.geometry(f"{w}x{h}+{x}+{y}")
-        
+
+# -----------------------------
+# Función iniciar_tipificacion
+# -----------------------------
 def iniciar_tipificacion(parent_root, conn, current_user_id):
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
@@ -3086,1156 +3569,139 @@ def actualizar_usuario(root, conn, user_id):
 
     win.mainloop()
 
-if "--crear-usuario" in sys.argv:
-    import tkinter as tk
-    from tkinter import messagebox
-    import customtkinter as ctk
-    import re, bcrypt
-    # aquí pones tu clase o función crear_usuario idéntica
-    class AppTk:
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-        def __init__(self, conn):
-            self.conn = conn
-            self._tk_root = tk.Tk()
-            self._tk_root.withdraw()
-        def crear_usuario(self):
-        # —–– Asegurarse de tener un root de Tkinter para el register() —––
-                if not hasattr(self, '_tk_root'):
-                    self._tk_root = tk.Tk()
-                    self._tk_root.withdraw()
-
-                # Validaciones
-                def only_upper_letters(input_str):
-                    return all(c.isalpha() or c in ('ñ','Ñ') for c in input_str)
-
-                def only_digits(P):
-                    return P == "" or P.isdigit()
-
-                def validate_email(email):
-                    regex = r'^[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z0-9\-.]+$'
-                    return re.match(regex, email) is not None
-
-                # Aquí usamos el register() del Tk oculto
-                vcmd_letters = (self._tk_root.register(only_upper_letters), '%P')
-                vcmd_digits  = (self._tk_root.register(only_digits), '%P')
-
-                # Crear ventana secundaria
-                top = ctk.CTkToplevel(self._tk_root)
-                top.title("Crear Usuario")
-                top.geometry("500x600")
-                top.resizable(False, False)
-
-                # Recuperar catálogos
-                cur = self.conn.cursor()
-                cur.execute("SELECT ID, NAME FROM TIPO_DOC")
-                tipos = cur.fetchall()
-                cur.execute("SELECT ID, NAME FROM STATUS WHERE ID IN (%s, %s)", (5, 6))
-                statuses = cur.fetchall()
-                cur.execute("SELECT ID, NAME FROM ROL")
-                roles = cur.fetchall()
-                cur.close()
-
-                tipo_map   = {name: tid for tid, name in tipos}
-                status_map = {name: sid for sid, name in statuses}
-
-                # Variables
-                fn_var   = tk.StringVar()
-                ln_var   = tk.StringVar()
-                doc_var  = tk.StringVar()
-                pwd_var  = tk.StringVar()
-                email_var = tk.StringVar()  # Variable para el correo
-                tipo_var = tk.StringVar(value=tipos[0][1] if tipos else "")
-                stat_var = tk.StringVar(value=statuses[0][1] if statuses else "")
-
-                # Frame
-                top.grid_rowconfigure(0, weight=1)
-                top.grid_columnconfigure(0, weight=1)
-                frm = ctk.CTkFrame(top, corner_radius=8)
-                frm.grid(row=0, column=0, padx=20, pady=20)
-
-                # Definición de campos
-                labels = [
-                    ("Nombres:", fn_var, "entry_upper", vcmd_letters),
-                    ("Apellidos:", ln_var, "entry_upper", vcmd_letters),
-                    ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
-                    ("N° Documento:", doc_var, "entry_digit", vcmd_digits),
-                    ("Correo:", email_var, "entry_email", None),  # Nuevo campo correo
-                    ("Contraseña:", pwd_var, "entry_pass", None),
-                    ("Status:", stat_var, "combo", [n for _, n in statuses])
-                ]
-
-                for i, (text, var, kind, cmd) in enumerate(labels):
-                    ctk.CTkLabel(frm, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
-                    if kind == "entry_upper":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            width=300,
-                            validate="key",
-                            validatecommand=cmd
-                        )
-                        # Convierte a mayúsculas al soltar cada tecla
-                        widget.bind("<KeyRelease>", lambda e, v=var: v.set(v.get().upper()))
-
-                    elif kind == "entry_digit":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            width=300,
-                            validate="key",
-                            validatecommand=cmd
-                        )
-
-                    elif kind == "entry_pass":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            show="*",
-                            width=300
-                        )
-
-                    elif kind == "entry_email":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            width=300
-                        )
-
-                    else:  # combo
-                        widget = ctk.CTkComboBox(
-                            frm,
-                            values=cmd,
-                            variable=var,
-                            width=300
-                        )
-
-                    widget.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
-                    if i == 0:
-                        widget.focus()
-
-                # Checkboxes de roles
-                ctk.CTkLabel(frm, text="Roles:").grid(row=len(labels), column=0, sticky="nw", pady=(10, 0))
-                rol_vars = {}
-                chk_frame = ctk.CTkFrame(frm)
-                chk_frame.grid(row=len(labels), column=1, sticky="w", pady=(10, 0))
-                for j, (rid, rname) in enumerate(roles):
-                    var_chk = tk.BooleanVar()
-                    rol_vars[rid] = var_chk
-                    ctk.CTkCheckBox(chk_frame, text=rname, variable=var_chk).grid(row=j, column=0, sticky="w", pady=2)
-
-                # Función para guardar usuario
-                def guardar_usuario(event=None):
-                    # Validar campos
-                    if not all([fn_var.get(), ln_var.get(), doc_var.get(), pwd_var.get(), email_var.get()]):
-                        messagebox.showwarning("Faltan datos", "Completa todos los campos.")
-                        return
-
-                    # Validar correo
-                    email = email_var.get().strip()
-                    if not validate_email(email):
-                        messagebox.showwarning("Correo inválido", "Por favor ingresa un correo válido.")
-                        return
-
-                    # Validar longitud de la contraseña
-                    if len(pwd_var.get().strip()) < 6:
-                        messagebox.showwarning("Contraseña inválida", "La contraseña debe tener al menos 6 caracteres.")
-                        return
-
-                    # Validar si al menos un rol ha sido seleccionado
-                    if not any(v.get() for v in rol_vars.values()):
-                        messagebox.showwarning("Faltan roles", "Debe seleccionar al menos un rol para el usuario.")
-                        return
-
-                    try:
-                        first_name = fn_var.get().strip()
-                        last_name  = ln_var.get().strip()
-                        num_doc    = int(doc_var.get().strip())
-                        email_address = email  # Correo ingresado por el usuario
-                        type_id    = tipo_map[tipo_var.get()]
-
-                        # Verificar duplicado
-                        cursor = self.conn.cursor()
-                        cursor.execute(
-                            "SELECT COUNT(*) FROM USERS WHERE TYPE_DOC_ID = %s AND NUM_DOC = %s",
-                            (type_id, num_doc)
-                        )
-                        if cursor.fetchone()[0] > 0:
-                            cursor.close()
-                            messagebox.showerror("Duplicado", "Ya existe un usuario con ese tipo y número de documento.")
-                            return
-
-                        # Cifrar contraseña con bcrypt
-                        raw_pwd   = pwd_var.get().strip()
-                        pwd_bytes = raw_pwd.encode('utf-8')
-                        salt      = bcrypt.gensalt(rounds=12)
-                        pwd_hash  = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
-
-                        status_id = status_map[stat_var.get()]
-                        selected  = [rid for rid, v in rol_vars.items() if v.get()]
-
-                        # Insertar usuario
-                        cursor.execute(
-                            """
-                            INSERT INTO USERS 
-                            (FIRST_NAME, LAST_NAME, TYPE_DOC_ID, NUM_DOC, PASSWORD, CORREO, STATUS_ID)
-                            OUTPUT INSERTED.ID
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            """,
-                            (first_name, last_name, type_id, num_doc, pwd_hash, email_address, status_id)
-                        )
-                        new_id = cursor.fetchone()[0]
-
-                        # Insertar roles
-                        for rid in selected:
-                            cursor.execute(
-                                "INSERT INTO USER_ROLES (USER_ID, ROL_ID) VALUES (%s, %s)",
-                                (new_id, rid)
-                            )
-
-                        self.conn.commit()
-                        cursor.close()
-                        messagebox.showinfo("Éxito", f"Usuario creado con ID {new_id}")
-                        top.destroy()
-
-                    except Exception as e:
-                        messagebox.showerror("Error", str(e))
-
-                # Botón Guardar
-                btn = ctk.CTkButton(frm, text="Guardar Usuario", command=guardar_usuario, width=200)
-                btn.grid(row=len(labels)+1, column=0, columnspan=2, pady=20)
-                top.bind("<Return>", guardar_usuario)
-        def run(self):
-            self.crear_usuario()
-            self._tk_root.mainloop()
-
-    conn = conectar_sql_server("DB_DATABASE")
+def open_dashboard(user_id, first_name, last_name, parent):
+    conn = conectar_sql_server('DB_DATABASE')
     if conn is None:
-        sys.exit("No se pudo conectar a la BD.")
-    AppTk(conn).run()   # ahora existe .run()
-    sys.exit(0)
-    
-    
-if "--iniciar-tipificacion" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-        # 1) crea el root oculto
-        root = tk.Tk()
-        root.withdraw()
+        messagebox.showerror("Error", "No se pudo conectar a la base de datos.")
+        return
 
-        # 2) conecta a la BD
-        conn = conectar_sql_server("DB_DATABASE")
-        if conn is None:
-            sys.exit("No se pudo conectar a la BD.")
+    # Obtengo roles del usuario
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT R.ID, R.NAME "
+        "FROM USER_ROLES UR "
+        "JOIN ROL R ON UR.ROL_ID = R.ID "
+        "WHERE UR.USER_ID = %s",
+        (user_id,)
+    )
+    roles = cursor.fetchall()  # lista de (id, name)
+    cursor.close()
 
-        # 3) extrae el user_id que viene justo después del flag
-        idx = sys.argv.index("--iniciar-tipificacion")
-        try:
-            user_id = int(sys.argv[idx + 1])
-        except Exception:
-            sys.exit("Falta user_id tras --iniciar-tipificacion")
+    # Mapeo nombre->id para usar en el OptionMenu
+    role_map = {name: rid for (rid, name) in roles}
+    role_names = list(role_map.keys())
 
-        # 4) llama a tu función
-        iniciar_tipificacion(root, conn, user_id)
+    # Creo el Toplevel
+    root = ctk.CTkToplevel(parent)
+    root.title("Dashboard - Capturador De Datos")
+    root.geometry("500x500")
+    root.resizable(False, False)
 
-        # 5) arranca el loop de Tk para CustomTkinter
-        root.mainloop()
-        sys.exit(0)
-        
-if "--iniciar-calidad" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-        # 1) crea el root oculto
-        root = tk.Tk()
-        root.withdraw()
+    # Bienvenida
+    ctk.CTkLabel(
+        root,
+        text=f"Bienvenido, {first_name} {last_name}",
+        font=ctk.CTkFont(size=20, weight="bold")
+    ).pack(pady=(20, 10))
 
-        # 2) conecta a la BD
-        conn = conectar_sql_server("DB_DATABASE")
-        if conn is None:
-            sys.exit("No se pudo conectar a la BD.")
+    # Selector de rol
+    role_var = tk.StringVar(value=role_names[0] if role_names else "")
+    option = ctk.CTkOptionMenu(
+        root,
+        values=role_names,
+        variable=role_var
+    )
+    option.pack(pady=(0, 10))
 
-        # 3) extrae el user_id que viene justo después del flag
-        idx = sys.argv.index("--iniciar-calidad")
-        try:
-            user_id = int(sys.argv[idx + 1])
-        except Exception:
-            sys.exit("Falta user_id tras --iniciar-calidad")
+    # Marco para los botones
+    btn_frame = ctk.CTkFrame(root)
+    btn_frame.pack(padx=20, pady=20, fill="both", expand=True)
 
-        # 4) llama a tu función
-        iniciar_calidad(root, conn, user_id)
-
-        # 5) arranca el loop de Tk para CustomTkinter
-        root.mainloop()
-        sys.exit(0)
-        
-if "--ver-progreso" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-        # 1) crea el root oculto
-        root = tk.Tk()
-        root.withdraw()
-
-        # 2) conecta a la BD
-        conn = conectar_sql_server("DB_DATABASE")
-        if conn is None:
-            sys.exit("No se pudo conectar a la BD.")
-
-        # 3) extrae el user_id que viene justo después del flag
-        idx = sys.argv.index("--ver-progreso")
-
-        # 4) llama a tu función
-        ver_progreso(root, conn)
-
-        # 5) arranca el loop de Tk para CustomTkinter
-        root.mainloop()
-        sys.exit(0)
-
-if "--exportar_paquete" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-        # 1) crea el root oculto
-        root = tk.Tk()
-        root.withdraw()
-
-        # 2) conecta a la BD
-        conn = conectar_sql_server("DB_DATABASE")
-        if conn is None:
-            sys.exit("No se pudo conectar a la BD.")
-
-        # 3) extrae el user_id que viene justo después del flag
-        idx = sys.argv.index("--exportar-paquete")
-
-        # 4) llama a tu función
-        exportar_paquete(root, conn)
-
-        # 5) arranca el loop de Tk para CustomTkinter
-        root.mainloop()
-        sys.exit(0)
-        
-if "--exportar_paquete" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-        # 1) crea el root oculto
-        root = tk.Tk()
-        root.withdraw()
-
-        # 2) conecta a la BD
-        conn = conectar_sql_server("DB_DATABASE")
-        if conn is None:
-            sys.exit("No se pudo conectar a la BD.")
-
-        # 3) extrae el user_id que viene justo después del flag
-        idx = sys.argv.index("--exportar-paquete")
-
-        # 4) llama a tu función
-        exportar_paquete(root, conn)
-
-        # 5) arranca el loop de Tk para CustomTkinter
-        root.mainloop()
-        sys.exit(0)
-        
-if "--actualizar-datos" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-        # 1) crea el root oculto
-        root = tk.Tk()
-        root.withdraw()
-
-        # 2) conecta a la BD
-        conn = conectar_sql_server("DB_DATABASE")
-        if conn is None:
-            sys.exit("No se pudo conectar a la BD.")
-
-        # 3) extrae el user_id que viene justo después del flag
-        idx = sys.argv.index("--actualizar-datos")
-        try:
-            user_id = int(sys.argv[idx + 1])
-        except Exception:
-            sys.exit("Falta user_id tras --iniciar-calidad")
-            
-        # 4) llama a tu función
-        actualizar_usuario(root, conn)
-
-        # 5) arranca el loop de Tk para CustomTkinter
-        root.mainloop()
-        sys.exit(0)
-        
-if "--desactivar-usuario" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-        # 1) crea el root oculto
-        root = tk.Tk()
-        root.withdraw()
-
-        # 2) conecta a la BD
-        conn = conectar_sql_server("DB_DATABASE")
-        if conn is None:
-            sys.exit("No se pudo conectar a la BD.")
-
-        # 3) extrae el user_id que viene justo después del flag
-        idx = sys.argv.index("--desactivar-usuario")
-        try:
-            user_id = int(sys.argv[idx + 1])
-        except Exception:
-            sys.exit("Falta user_id tras --iniciar-calidad")
-            
-        # 4) llama a tu función
-        modificar_estado_usuario(root, conn)
-
-        # 5) arranca el loop de Tk para CustomTkinter
-        root.mainloop()
-        sys.exit(0)
-
-
-def resource_path(rel_path):
-    """
-    Devuelve la ruta absoluta a `rel_path`, 
-    usando _MEIPASS cuando PyInstaller congela la app.
-    """
-    base = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
-    return os.path.join(base, rel_path)
-
-def safe_destroy(win):
-    """
-    Cancela todos los callbacks `after` pendientes de Tkinter 
-    y destruye la ventana sin errores de comando Tcl.
-    """
-    try:
-        for aid in win.tk.call('after', 'info'):
-            try:
-                win.after_cancel(aid)
-            except Exception:
-                pass
-    except Exception:
-        pass
-    # desconectar triggers de CTk
-    for child in win.winfo_children():
-        try:
-            child.destroy()
-        except:
-            pass
-    try:
-        win.destroy()
-    except:
-        pass
-    
-
-def make_semitransparent_image(w, h, radius=20, alpha=150):
-    img = Image.new("RGBA", (w, h), (0,0,0,0))
-    mask = Image.new("L", (w, h), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.rounded_rectangle((0,0,w,h), radius=radius, fill=alpha)
-    black = Image.new("RGBA", (w, h), (0,0,0,alpha))
-    img.paste(black, (0,0), mask)
-    return img
-
-# -----------------------------------------------------------------------------
-# styled_window: crea un Toplevel con fondo y panel redondeado/transparente
-# -----------------------------------------------------------------------------
-def styled_window(parent, title, bg_file, width, height):
-    win = ctk.CTkToplevel(parent)
-    win.title(title)
-    win.geometry(f"{width}x{height}")
-    win.resizable(False, False)
-
-    # 1) canvas para fondo + panel
-    canvas = tk.Canvas(win, width=width, height=height, highlightthickness=0)
-    canvas.place(x=0, y=0)
-
-    # 2) imagen de fondo
-    bg_path = resource_path(bg_file)
-    if os.path.exists(bg_path):
-        bg = Image.open(bg_path).resize((width, height), Image.LANCZOS)
-        tk_bg = ImageTk.PhotoImage(bg)
-        canvas.create_image(0, 0, anchor="nw", image=tk_bg)
-        canvas.bg_img = tk_bg  # mantener referencia
-
-    # 3) panel semitransparente redondeado
-    panel_w, panel_h = int(width * 0.8), int(height * 0.8)
-    panel_x = (width - panel_w) // 2
-    panel_y = (height - panel_h) // 2
-
-    semi = make_semitransparent_image(panel_w, panel_h, radius=20, alpha=150)
-    tk_semi = ImageTk.PhotoImage(semi)
-    canvas.create_image(panel_x, panel_y, anchor="nw", image=tk_semi)
-    canvas.semi_img = tk_semi
-
-    # 4) frame transparente para tus widgets
-    content = ctk.CTkFrame(win, fg_color="transparent", width=panel_w, height=panel_h)
-    content.place(x=panel_x, y=panel_y)
-    content.pack_propagate(False)
-
-    return win, content
-
-
-class DashboardWindow(QtWidgets.QMainWindow):
-    def __init__(self, user_id, first_name, last_name, parent=None):
-        super().__init__(parent)
-        import tkinter as tk
-        self._tk_root = tk.Tk()
-        self._tk_root.withdraw()
-        self.user_id = user_id
-        self.first_name = first_name
-        self.last_name = last_name
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-
-        # Conexión a BD
-        self.conn = conectar_sql_server("DB_DATABASE")
-        if not self.conn:
-            QtWidgets.QMessageBox.critical(
-                None, "Error", "No se pudo conectar a la base de datos."
-            )
-            sys.exit(1)
-
-        # Configuración de la ventana
-        self.setWindowTitle("Dashboard · Capturador De Datos")
-        self.resize(900, 900)
-        self.center_on_screen()
-
-        # ——————————————————————————————
-        # 1) Fondo de la ventana
-        # ——————————————————————————————
-        bg_path = resource_path("Fondo2.png")
-        if os.path.exists(bg_path):
-            palette = QtGui.QPalette()
-            pix = QtGui.QPixmap(bg_path).scaled(
-                self.size(),
-                QtCore.Qt.KeepAspectRatioByExpanding,
-                QtCore.Qt.SmoothTransformation
-            )
-            palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
-            self.setPalette(palette)
-
-        # ——————————————————————————————
-        # 2) Panel central semitransparente
-        # ——————————————————————————————
-        central = QtWidgets.QWidget()
-        self.setCentralWidget(central)
-        v_layout = QtWidgets.QVBoxLayout(central)
-        v_layout.setContentsMargins(0, 0, 0, 0)
-        v_layout.setSpacing(0)
-
-        self.panel = QtWidgets.QFrame()
-        self.panel.setObjectName("dashboardPanel")
-        self.panel.setStyleSheet("""
-            QFrame#dashboardPanel {
-                background-color: rgba(0, 0, 0, 150);
-                border-radius: 20px;
-            }
-        """)
-        shadow = QGraphicsDropShadowEffect(self.panel)
-        shadow.setBlurRadius(20)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QtGui.QColor(0, 0, 0, 160))
-        self.panel.setGraphicsEffect(shadow)
-
-        # Blur (frosted glass)
-        blur = QGraphicsBlurEffect(self.panel)
-        blur.setBlurRadius(8)
-        p_layout = QtWidgets.QVBoxLayout(self.panel)
-        p_layout.setContentsMargins(40, 40, 40, 40)   # más padding interno
-        p_layout.setSpacing(16)
-        
-        p_layout.addSpacing(40)
-
-        v_layout.addStretch()
-        v_layout.addWidget(self.panel, alignment=QtCore.Qt.AlignCenter)
-        v_layout.addStretch()
-
-        # ——————————————————————————————
-        # 3) Encabezado con saludo
-        # ——————————————————————————————
-        lbl_saludo = QtWidgets.QLabel(f"Bienvenido, {first_name} {last_name}")
-        lbl_saludo.setAlignment(QtCore.Qt.AlignCenter)
-        lbl_saludo.setStyleSheet("""
-            color: #FFFFFF;
-            font-size: 28px;         /* un poco más grande */
-            font-weight: 600;        /* seminegrita */
-            background: transparent;
-        """)
-        p_layout.addWidget(lbl_saludo)
-        
-        p_layout.addSpacing(20)
-
-        # ——————————————————————————————
-        # 4) Selector de rol
-        # ——————————————————————————————
-        self.cmb_role = QtWidgets.QComboBox()
-        self.cmb_role.setStyleSheet("""
-            QComboBox {
-                background-color: rgba(255,255,255,200);
-                border-radius: 10px;
-                padding: 5px 10px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QComboBox::drop-down { border: none; }
-        """)
-        p_layout.addWidget(self.cmb_role, alignment=QtCore.Qt.AlignCenter)
-        
-        p_layout.addSpacing(40)
-
-        # Cargar roles desde BD
-        self._load_roles()
-
-        # ——————————————————————————————
-        # 5) Botones de acciones según rol
-        # ——————————————————————————————
-        self.buttons_layout = QtWidgets.QVBoxLayout()
-        self.buttons_layout.setSpacing(20)
-        p_layout.addLayout(self.buttons_layout)
-        p_layout.addSpacing(40)
-        self.cmb_role.currentIndexChanged.connect(self._refresh_buttons)
-        self._refresh_buttons()  # inicializa botones para el rol por defecto
-
-        # ——————————————————————————————
-        # 6) Logout
-        # ——————————————————————————————
-        
-        btn_logout = QtWidgets.QPushButton("Cerrar Sesión")
-        btn_logout.setFixedSize(120, 35)
-        btn_logout.setStyleSheet("""
-            QPushButton {
-                background-color: #FF6F61;
-                color: white;
-                border-radius: 20px;
-                font-size: 16px;
-                padding: 8px 16px;
-                min-width: 120px;
-                min-height: 35px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #E14D50;
-            }
-        """)
-        btn_logout.clicked.connect(self.on_logout)
-        hbox_logout = QtWidgets.QHBoxLayout()
-        hbox_logout.addStretch()
-        hbox_logout.addWidget(btn_logout)
-        hbox_logout.addStretch()
-        p_layout.addLayout(hbox_logout)
-
-    def center_on_screen(self):
-        """Centra la ventana en la pantalla."""
-        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        size = self.geometry()
-        x = (screen.width() - size.width()) // 2
-        y = (screen.height() - size.height()) // 2
-        self.move(x, y)
-
-    def _load_roles(self):
-        """Carga los roles del usuario y llena el combo."""
-        cur = self.conn.cursor()
-        cur.execute("""
-            SELECT R.ID, R.NAME
-              FROM USER_ROLES UR
-              JOIN ROL R ON UR.ROL_ID = R.ID
-             WHERE UR.USER_ID = %s
-        """, (self.user_id,))
-        rows = cur.fetchall()
-        cur.close()
-
-        # Map name->id
-        self.role_map = {name: rid for rid, name in rows}
-        self.cmb_role.clear()
-        self.cmb_role.addItems(list(self.role_map.keys()))
-
-    def _refresh_buttons(self):
-        """Recrea los botones de acción cuando cambia de rol."""
-        # Limpia layout
-        while self.buttons_layout.count():
-            w = self.buttons_layout.takeAt(0).widget()
-            if w:
-                w.deleteLater()
-
-        name = self.cmb_role.currentText()
-        rid = self.role_map.get(name)
-        # Definición de botones por rol
-        btns_by_role = {
-            1: [
-                ("Cargar Paquete",      self.on_cargar_paquete),
-                ("Crear Usuario",       self.on_crear_usuario),
-                ("Actualizar Datos",    self.on_actualizar_datos),
-                ("Ver Progreso",        self.on_ver_progreso),
-                ("Desactivar Usuario",    self.on_modificar_estado_usuario),
-                ("Exportar Datos",      self.on_exportar_paquete),
-            ],
-            2: [
-                ("Capturar Datos",      self.on_iniciar_digitacion),
-                ("Actualizar Datos",    self.on_actualizar_datos),
-                ("Ver Progreso",        self.on_ver_progreso),
-                ("Exportar Datos",      self.on_exportar_paquete),
-            ],
-            3: [
-                ("Validar Calidad",     self.on_iniciar_calidad),
-                ("Actualizar Datos",    self.on_actualizar_datos),
-                ("Ver Progreso",        self.on_ver_progreso),
-                ("Exportar Datos",      self.on_exportar_paquete),
-            ],
-        }
-
-        for text, slot in btns_by_role.get(rid, []):
-            btn = QtWidgets.QPushButton(text)
-            btn.setFixedHeight(40)
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: #2B7DBF;
-                    color: white;
-                    border-radius: 20px;
-                    font-size: 16px;
-                    padding: 8px 16px;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{
-                    background-color: #3291DE;
-                }}
-            """)
-            btn.clicked.connect(slot)
-            self.buttons_layout.addWidget(btn)
-
-    def on_logout(self):
-        """Cierra el dashboard y relanza el login."""
-        self.close()
-        script = resource_path("login_app.py")
+    # Función para cerrar sesión
+    def on_logout():
+        safe_destroy(root)
+        login_script = os.path.join(os.path.dirname(__file__), "login_app.py")
         subprocess.Popen(
-            [sys.executable, script],
-            cwd=os.path.dirname(script)
+            [sys.executable, login_script],
+            cwd=os.path.dirname(__file__)
         )
 
-    # ——————————————————————————————
-    # Métodos de acción (stubs; implementa tu lógica aquí)
-    # ——————————————————————————————
-    def cargar_paquete(self):
-        # —————————————————————————————————————————————
-        # Asegura un root de Tkinter para todos los CTkToplevel
-        # —————————————————————————————————————————————
-        if not hasattr(self, '_tk_root'):
-            self._tk_root = tk.Tk()
-            self._tk_root.withdraw()
-    # 0) Selección de Tipo de Paquete
-        if not hasattr(self, '_tk_root'):
-            self._tk_root = tk.Tk()
-            self._tk_root.withdraw()
+    # Botones por rol
+    def start_tipificacion_and_close():
+        safe_destroy(root)
+        iniciar_tipificacion(None, conn, user_id)
 
-        # ─── Ventana modal ─────────────────────────────────────────────────────────────
-        sel = ctk.CTkToplevel(self._tk_root)
-        sel.configure(fg_color="#2f2f2f")  # fondo gris oscuro
-        sel.title("Seleccione Tipo de Paquete")
-
-        # Variable para saber si aceptó o cerró
-        accepted = tk.BooleanVar(value=False)
-        tipo_paquete_var = tk.StringVar(value="DIGITACION")
-
-        # ─── Etiqueta principal ────────────────────────────────────────────────────────
-        ctk.CTkLabel(
-        sel,
-        text="Tipo de Paquete:",
-        text_color="white",
-        fg_color="#2f2f2f",
-        font=("Arial", 14, "bold")
-        ).pack(pady=10)
-
-        # ─── Menú desplegable con fondo blanco ─────────────────────────────────────────
-        ctk.CTkOptionMenu(
-            sel,
-            values=["DIGITACION", "CALIDAD"],
-            variable=tipo_paquete_var,
-            fg_color="#FFFFFF",              # fondo blanco
-            button_color="#F0F0F0",          # botón desplegable claro
-            button_hover_color="#E0E0E0",
-            dropdown_fg_color="#FFFFFF",
-            dropdown_text_color="black",
-            dropdown_hover_color="#DDDDDD",
-            text_color="black",
-            corner_radius=8,
-            font=("Arial", 12, "bold")
-        ).pack(pady=5)
-
-        def on_accept():
-            accepted.set(True)
-            sel.destroy()
-
-        # ─── Botones “Aceptar” / “Cancelar” con azul del dashboard ─────────────────────
-        for txt, cmd, side in [
-            ("Aceptar", on_accept, "left"),
-            ("Cancelar", sel.destroy, "right")
-        ]:
-            ctk.CTkButton(
-                sel,
-                text=txt,
-                command=cmd,
-                fg_color="#007BFF",    # mismo azul del dashboard
-                hover_color="#339CFF",
-                text_color="white",
-                corner_radius=20,
-                width=100,
-                height=35,
-                font=("Arial", 12, "bold")
-            ).pack(side=side, padx=20, pady=10)
-
-        # ─── Mostrar y esperar ─────────────────────────────────────────────────────────
-        sel.grab_set()
-        self._tk_root.wait_window(sel)
-
-        # Si cerró o pulsó Cancelar, salimos sin seguir
-        if not accepted.get():
-            return
-
-        tipo_paquete = tipo_paquete_var.get()
-
-        # 1) Definir encabezados que esperamos
-        expected_headers = {
-            "RADICADO", "NIT", "RAZON_SOCIAL", "FACTURA",
-            "VALOR_FACTURA", "FECHA RADICACION",
-            "ESTADO_FACTURA", "IMAGEN",
-            "RADICADO_IMAGEN", "LINEA", "ID ASIGNACION",
-            "ESTADO PYS", "OBSERVACION PYS", "LINEA PYS",
-            "RANGOS", "Def"
-        }
-
-        # 2) Seleccionar archivo
-        path = filedialog.askopenfilename(
-            title="Selecciona el archivo de paquete",
-            filetypes=[("Excel/CSV", "*.xlsx *.xls *.csv"), ("Todos", "*.*")]
-        )
-        if not path:
-            return
-
-        # 3) Leer con pandas
-        try:
-            if path.lower().endswith(('.xls', '.xlsx')):
-                df = pd.read_excel(path)
-            else:
-                df = pd.read_csv(path)
-        except Exception:
-            messagebox.showerror("Error lectura", "No se pudo leer el archivo. Verifica formato.")
-            return
-
-        # 4) Validar encabezados
-        actual_headers = set(df.columns)
-        missing = expected_headers - actual_headers
-        extra   = actual_headers - expected_headers
-        if missing or extra:
-            msg = []
-            if missing:
-                msg.append("Faltan columnas:\n  • " + "\n  • ".join(sorted(missing)))
-            if extra:
-                msg.append("Columnas inesperadas:\n  • " + "\n  • ".join(sorted(extra)))
-            messagebox.showerror(
-                "Encabezados incorrectos",
-                "El archivo no tiene la estructura esperada.\n\n"
-                "Esperados:\n  • " + "\n  • ".join(sorted(expected_headers)) +
-                "\n\nEncontrados:\n  • " + "\n  • ".join(sorted(actual_headers)) +
-                "\n\n" + "\n\n".join(msg)
-            )
-            return
-
-        total = len(df)
-        if total == 0:
-            messagebox.showinfo("Sin datos", "El archivo está vacío.")
-            return
-
-        # 5) Detectar RADICADOS ya existentes
-        try:
-            rad_list = df["RADICADO"].dropna().astype(int).unique().tolist()
-        except Exception:
-            messagebox.showerror(
-                "Error en RADICADO",
-                "No se pudieron convertir los valores de RADICADO a enteros.\n"
-                "Verifica que esa columna contenga sólo números."
-            )
-            return
-
-        if rad_list:
-            in_clause = ",".join(str(r) for r in rad_list)
-            sql = f"SELECT RADICADO FROM ASIGNACION_TIPIFICACION WHERE RADICADO IN ({in_clause})"
-            cur = self.conn.cursor()
-            try:
-                cur.execute(sql)
-                existentes = sorted(r[0] for r in cur.fetchall())
-            except Exception as e:
-                messagebox.showerror(
-                    "Error al verificar duplicados",
-                    f"No se pudo comprobar duplicados:\n\n{e}"
-                )
-                cur.close()
-                return
-            cur.close()
-
-            if existentes:
-                messagebox.showerror(
-                    "Radicados duplicados",
-                    "Los siguientes radicados ya existen:\n\n" +
-                    "\n".join(f"• {r}" for r in existentes)
-                )
-                return
-
-        # 6) Calcular NUM_PAQUETE → tomo el mayor de TODOS los registros
-        cur = self.conn.cursor()
-        cur.execute(
-            "SELECT ISNULL(MAX(NUM_PAQUETE), 0) "
-            "FROM ASIGNACION_TIPIFICACION "
-            "WHERE TIPO_PAQUETE = %s",
-            (tipo_paquete,)
-        )
-        ultimo = cur.fetchone()[0]   # si no hay ninguno, devuelve 0
-        NUM_PAQUETE = ultimo + 1
-        cur.close()
-
-        # DEBUG opcional
-        print(f"[DEBUG] Nuevo NUM_PAQUETE para {tipo_paquete} → {NUM_PAQUETE}")
-
-
-        # 7) Activar IDENTITY_INSERT
-        cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION ON;")
-
-        # 8) Crear barra de progreso
-        progress_window = ctk.CTkToplevel()
-        progress_window.title("Progreso de Carga")
-        progress_window.geometry("400x150")
-        progress_label = ctk.CTkLabel(progress_window, text="Cargando registros...")
-        progress_label.pack(pady=10)
-        
-        progress_bar = ctk.CTkProgressBar(progress_window, orientation="horizontal", mode="determinate")
-        progress_bar.pack(padx=20, pady=20, fill="x")
-
-        # Inicializar la barra de progreso en 0
-        progress_bar.set(0)
-        
-        # 9) Preparamos la lista de parámetros
-        params_list = []
-        for idx, row in df.iterrows():
-            try:
-                # (mismos sanitizados que antes…)
-                radicado       = int(row["RADICADO"])
-                nit            = int(row["NIT"])
-                razon          = str(row["RAZON_SOCIAL"])
-                factura        = str(row["FACTURA"])
-                valor_factura  = int(row["VALOR_FACTURA"])
-                fecha_factura = None
-                if "FECHA FACTURA" in df.columns:
-                    v = row["FECHA FACTURA"]
-                    fecha_factura = None if pd.isna(v) else str(v)
-                num_doc = None
-                tipo_doc_id = None
-                if "TIPO DOC" in df.columns:
-                    v = row["TIPO DOC"]
-                    tipo_doc_id = None if pd.isna(v) else str(v)
-                num_doc = None
-                if "NUM DOC" in df.columns:
-                    v = row["NUM DOC"]
-                    num_doc = None if pd.isna(v) else int(v)
-                fecha_rad      = row["FECHA RADICACION"]
-                estado_factura = str(row.get("ESTADO_FACTURA","")).strip() or None
-                imagen         = str(row.get("IMAGEN","")).strip() or None
-
-                def s(col):
-                    v = row.get(col)
-                    return None if pd.isna(v) else str(v)
-                rad_img   = s("RADICADO_IMAGEN")
-                linea     = s("LINEA")
-                id_asig   = s("ID ASIGNACION")
-                est_pys   = s("ESTADO PYS")
-                obs_pys   = s("OBSERVACION PYS")
-                linea_pys = s("LINEA PYS")
-                rangos    = s("RANGOS")
-                def_col   = s("Def")
-
-                params_list.append((
-                    radicado, nit, razon, factura, valor_factura,
-                    fecha_factura, fecha_rad, tipo_doc_id, num_doc,
-                    estado_factura, imagen,
-                    rad_img, linea, id_asig, est_pys,
-                    obs_pys, linea_pys, rangos, def_col,tipo_paquete,
-                    NUM_PAQUETE,
-                ))
-            except Exception:
-                print(f"Error preparando fila {idx}:")
-                traceback.print_exc()
-
-            # Actualizar la barra de progreso
-            progress_bar.set(idx + 1)
-
-        # 10) Ejecutamos todos de golpe
-        cur.executemany(
-            """
-            INSERT INTO ASIGNACION_TIPIFICACION
-            (RADICADO, NIT, RAZON_SOCIAL, FACTURA, VALOR_FACTURA,
-            FECHA_FACTURA, FECHA_RADICACION, TIPO_DOC_ID,
-            NUM_DOC, ESTADO_FACTURA, IMAGEN, RADICADO_IMAGEN,
-            LINEA, ID_ASIGNACION, ESTADO_PYS, OBSERVACION_PYS,
-            LINEA_PYS, RANGOS, DEF, TIPO_PAQUETE, STATUS_ID, NUM_PAQUETE)
-            VALUES
-        (%s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, 1, %s)
-            """,
-            params_list
-        )
-        inserted = len(params_list)
-
-        # 11) Desactivar IDENTITY_INSERT y commit
-        cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION OFF;")
-        self.conn.commit()
-        cur.close()
-
-        # Cerrar la ventana de progreso
-        progress_window.destroy()
-
-        messagebox.showinfo(
-            "Carga completa",
-            f"Total filas: {total}\nInsertadas: {inserted}\nPaquete: {NUM_PAQUETE}"
-        )
-
-        # 12) Selección de campos
-        sel = ctk.CTkToplevel()
-        sel.title(f"Paquete {NUM_PAQUETE}: Selecciona campos")
-        campos = [
-            "FECHA_SERVICIO", "FECHA_FINAL", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO",
-            "AUTORIZACION", "CODIGO_SERVICIO", "CANTIDAD", "VLR_UNITARIO",
-            "COPAGO", "OBSERVACION"
+    def start_quality_and_close():
+        safe_destroy(root)
+        iniciar_calidad(None, conn, user_id)
+    
+    buttons_by_role = {
+        1: [
+            ("Cargar Paquete",     lambda: cargar_paquete(root, conn)),
+            ("Crear Usuario",      lambda: crear_usuario(root, conn)),
+            ("Actualizar Datos",   lambda: actualizar_usuario(root, conn, user_id)),
+            ("Ver Progreso",       lambda: ver_progreso(root, conn)),
+            ("Activar/Desactivar Usuario", lambda: modificar_estado_usuario(root, conn)),
+            ("Exportar Capturación De Datos", lambda: exportar_paquete(root, conn)),
+        ],
+        2: [
+            ("Iniciar Capturación De Datos", start_tipificacion_and_close),
+            ("Actualizar Datos",   lambda: actualizar_usuario(root, conn, user_id)),
+            ("Ver Progreso",       lambda: ver_progreso(root, conn)),
+            ("Exportar Capturación De Datos", lambda: exportar_paquete(root, conn)),
+        ],
+        3: [
+            ("Iniciar Validación Calidad Datos", start_quality_and_close),
+            ("Actualizar Datos",   lambda: actualizar_usuario(root, conn, user_id)),
+            ("Ver Progreso",       lambda: ver_progreso(root, conn)),
+            ("Exportar Capturación De Datos", lambda: exportar_paquete(root, conn)),
         ]
-        vars_chk = {}
-        for campo in campos:
-            vars_chk[campo] = tk.BooleanVar(value=True)
-            ctk.CTkCheckBox(sel, text=campo, variable=vars_chk[campo]).pack(
-                anchor="w", padx=20, pady=2
-            )
+    }
 
-        def guardar_campos(paquete=NUM_PAQUETE):
-            cur2 = self.conn.cursor()
-            for campo, var in vars_chk.items():
-                if var.get():
-                    cur2.execute(
-                        "INSERT INTO PAQUETE_CAMPOS (NUM_PAQUETE, campo) VALUES (%s, %s)",
-                        (paquete, campo)
-                    )
-            self.conn.commit()
-            cur2.close()
-            sel.destroy()
-            messagebox.showinfo("Guardado", f"Campos del paquete {NUM_PAQUETE} guardados.")
+    def show_role_buttons(selected):
+        for w in btn_frame.winfo_children():
+            w.destroy()
+        rid = role_map[selected]
+        for text, cmd in buttons_by_role.get(rid, []):
+            ctk.CTkButton(btn_frame, text=text, command=cmd, width=200)\
+                .pack(pady=5, anchor="center")
 
-        ctk.CTkButton(sel, text="Guardar", command=guardar_campos).pack(pady=10)
+    option.configure(command=show_role_buttons)
+    if role_names:
+        show_role_buttons(role_var.get())
 
-    def on_cargar_paquete(self):    
-        self.cargar_paquete()
-        pass
-        
-    def on_crear_usuario(self):
-        import subprocess
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([sys.executable, script, "--crear-usuario"])
+    def on_logout():
+        # destruye el dashboard actual
+        safe_destroy(root)
+        # vuelve a lanzar el script de login en un proceso separado
+        login_script = os.path.join(os.path.dirname(__file__), "login_app.py")
+        subprocess.Popen(
+            [sys.executable, login_script],
+            cwd=os.path.dirname(__file__)
+        )
 
-    def on_iniciar_digitacion(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--iniciar-tipificacion",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
 
-    def on_iniciar_calidad(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--iniciar-calidad",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
-
-    def on_ver_progreso(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--ver-progreso",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
-
-    def on_exportar_paquete(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--exportar-paquete",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
-
-    def on_actualizar_datos(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--actualizar-datos",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
-
-    def on_modificar_estado_usuario(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--desactivar-usuario",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
-
+    ctk.CTkButton(
+        root,
+        text="Logout",
+        command=on_logout,
+        width=120
+    ).place(relx=0.5, rely=0.9, anchor="center")
 
 if __name__ == "__main__":
-    app = QtWidgets.QApplication(sys.argv)
+    import sys
+    import customtkinter as ctk
+
     if len(sys.argv) != 4:
         print("Uso: python dashboard.py <user_id> <first_name> <last_name>")
         sys.exit(1)
+
     _, uid, fn, ln = sys.argv
-    window = DashboardWindow(int(uid), fn, ln)
-    window.show()
-    sys.exit(app.exec_())
+
+    root = ctk.CTk()
+    root.withdraw()   # ocultas la raíz
+
+    # ahora open_dashboard devuelve la ventana hija con su propio protocol
+    dashboard = open_dashboard(int(uid), fn, ln, parent=root)
+
+    root.mainloop()
