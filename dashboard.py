@@ -2031,6 +2031,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             for info in dv.values():
                 if isinstance(info, dict):
                     info['var'].set('')
+                    
+        if 'FECHA_SERVICIO' in widgets:
+            widgets['FECHA_SERVICIO'].focus_set()
 
         if 'FECHA_SERVICIO' in widgets:
             widgets['FECHA_SERVICIO'].focus_set()
@@ -3417,21 +3420,6 @@ if "--exportar-paquete" in sys.argv:
         root = tk.Tk()
         root.withdraw()
 
-        # 2) conecta a la BD
-        conn = conectar_sql_server("DB_DATABASE")
-        if conn is None:
-            sys.exit("No se pudo conectar a la BD.")
-
-        # 3) extrae el user_id que viene justo después del flag
-        idx = sys.argv.index("--exportar-paquete")
-
-        # 4) llama a tu función
-        exportar_paquete(root, conn)
-
-        # 5) arranca el loop de Tk para CustomTkinter
-        root.mainloop()
-        sys.exit(0)
-        
 if "--actualizar-datos" in sys.argv:
         import tkinter as tk
         from tkinter import messagebox
@@ -3482,10 +3470,6 @@ if "--desactivar-usuario" in sys.argv:
 
         # 3) extrae el user_id que viene justo después del flag
         idx = sys.argv.index("--desactivar-usuario")
-        try:
-            user_id = int(sys.argv[idx + 1])
-        except Exception:
-            sys.exit("Falta user_id tras --iniciar-calidad")
             
         # 4) llama a tu función
         modificar_estado_usuario(root, conn)
@@ -4165,7 +4149,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             sys.executable,
             script,
             "--ver-progreso",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
+            str(self)          # <–– Aquí debe ir el user_id
         ])
         pass
 
