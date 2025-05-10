@@ -2029,6 +2029,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             for info in dv.values():
                 if isinstance(info, dict):
                     info['var'].set('')
+                    
+        if 'FECHA_SERVICIO' in widgets:
+            widgets['FECHA_SERVICIO'].focus_set()
 
         return True
 
