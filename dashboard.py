@@ -1017,6 +1017,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             for info in dv.values():
                 if isinstance(info, dict):
                     info['var'].set('')
+                    
+        if 'FECHA_SERVICIO' in widgets:
+            widgets['FECHA_SERVICIO'].focus_set()
 
         return True
 
@@ -1111,16 +1114,13 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             #    así los callbacks que ya estén en cola pueden finalizar sin error.
             win.after_idle(win.destroy)
             return
-        if parent_root:
-            parent_root.deiconify()
         else:
             # En lugar de win.destroy + reiniciar toda la función,
             # simplemente recargamos la siguiente asignación
             if not load_assignment():
-                # Si no hay más asignaciones, cerramos
+                messagebox.showinfo("Sin asignaciones", "No hay más asignaciones pendientes.")
                 win.destroy()
-                if parent_root:
-                    parent_root.deiconify()
+
 
 
     bind_select_all(card)
@@ -2032,6 +2032,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                 if isinstance(info, dict):
                     info['var'].set('')
 
+        if 'FECHA_SERVICIO' in widgets:
+            widgets['FECHA_SERVICIO'].focus_set()
+        
         return True
 
     def do_save(final=False):
@@ -2127,16 +2130,13 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             #    así los callbacks que ya estén en cola pueden finalizar sin error.
             win.after_idle(win.destroy)
             return
-        if parent_root:
-            parent_root.deiconify()
+
         else:
             # En lugar de win.destroy + reiniciar toda la función,
             # simplemente recargamos la siguiente asignación
             if not load_assignment():
-                # Si no hay más asignaciones, cerramos
+                messagebox.showinfo("Sin asignaciones", "No hay más asignaciones pendientes.")
                 win.destroy()
-                if parent_root:
-                    parent_root.deiconify()
 
 
     bind_select_all(card)
@@ -3404,35 +3404,8 @@ if "--ver-progreso" in sys.argv:
         # 5) arranca el loop de Tk para CustomTkinter
         root.mainloop()
         sys.exit(0)
-
-if "--exportar_paquete" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
-        # 1) crea el root oculto
-        root = tk.Tk()
-        root.withdraw()
-
-        # 2) conecta a la BD
-        conn = conectar_sql_server("DB_DATABASE")
-        if conn is None:
-            sys.exit("No se pudo conectar a la BD.")
-
-        # 3) extrae el user_id que viene justo después del flag
-        idx = sys.argv.index("--exportar-paquete")
-
-        # 4) llama a tu función
-        exportar_paquete(root, conn)
-
-        # 5) arranca el loop de Tk para CustomTkinter
-        root.mainloop()
-        sys.exit(0)
         
-if "--exportar_paquete" in sys.argv:
+if "--exportar-paquete" in sys.argv:
         import tkinter as tk
         from tkinter import messagebox
         import customtkinter as ctk
@@ -3484,7 +3457,7 @@ if "--actualizar-datos" in sys.argv:
             sys.exit("Falta user_id tras --iniciar-calidad")
             
         # 4) llama a tu función
-        actualizar_usuario(root, conn)
+        actualizar_usuario(root, conn, user_id)
 
         # 5) arranca el loop de Tk para CustomTkinter
         root.mainloop()
