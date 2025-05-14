@@ -1380,6 +1380,8 @@ def modificar_radicado(parent_root, conn, user_id):
         main_cols    = {"FECHA_SERVICIO", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO"}
         main_updates = {k: updates[k] for k in updates if k in main_cols}
         det_updates  = {k: updates[k] for k in updates if k not in main_cols}
+        
+        main_updates['modificado_por'] = user_id
 
         # 7) Actualiza tabla TIPIFICACION
         if main_updates:
