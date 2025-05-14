@@ -21,7 +21,9 @@ import subprocess
 import tkinter as tk
 from io import BytesIO
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGraphicsBlurEffect
+from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem
+from PyQt5.QtGui import QPainter, QPainterPath, QImage, QRegion
+from PyQt5.QtCore import QRectF, QRect, QPoint
 from tkinter import filedialog, messagebox, ttk
 
 # — Terceros —
@@ -1192,6 +1194,265 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     for b in (btn_save, btn_add, btn_del, btn_exit):
         b.bind("<Return>", lambda e, btn=b: btn.invoke())
 
+def modificar_radicado(parent_root, conn, user_id):
+    parent_root.withdraw()
+    win = ctk.CTkToplevel(parent_root)
+    win.title("Actualizar Radicado")
+    win.geometry("1100x650")
+    win.grab_set()
+
+    # Variables
+    entry_radicado_var = tk.StringVar()
+    entry_nit_var      = tk.StringVar()
+    entry_factura_var  = tk.StringVar()
+
+    var_fecha  = tk.StringVar()
+    var_tipo   = tk.StringVar()
+    var_num    = tk.StringVar()
+    var_diag   = tk.StringVar()
+    var_auth   = tk.StringVar()
+    var_cs     = tk.StringVar()
+    var_qty    = tk.StringVar()
+    var_valor  = tk.StringVar()
+    var_copago = tk.StringVar()
+    var_obs    = tk.StringVar()
+
+    field_vars = {}
+
+    # Columnas numéricas para conversión
+    numeric_main = {"TIPO_DOC_ID", "NUM_DOC"}
+    numeric_det  = {"AUTORIZACION", "CANTIDAD", "VLR_UNITARIO", "COPAGO"}
+
+    # Formatea fecha DD/MM/AAAA
+    def _format_fecha_factory(var, widget):
+        def fmt(e):
+            txt = re.sub(r"[^0-9]", "", var.get())[:8]
+            parts = [txt[:2]]
+            if len(txt) > 2: parts.append(txt[2:4])
+            if len(txt) > 4: parts.append(txt[4:])
+            var.set("/".join(parts))
+            widget.icursor(len(var.get()))
+        return fmt
+
+    # Renderiza campos dinámicos
+    def _render_campos(campos_paquete):
+        for w in scroll.winfo_children(): w.destroy()
+        field_vars.clear()
+
+        cur = conn.cursor()
+        cur.execute("SELECT NAME FROM TIPO_DOC")
+        tipo_doc_opts = [r[0] for r in cur.fetchall()]
+        cur.execute("SELECT CODIGO, NOMBRE FROM TBL_CIE10")
+        diag_rows = cur.fetchall()
+        full_diag_opts = [f"{c} - {n}" for c, n in diag_rows]
+        cur.close()
+
+        DEFS = [
+            ("Fecha Servicio",   var_fecha, "FECHA_SERVICIO",  "date",         None),
+            ("Tipo Documento",   var_tipo,  "TIPO_DOC_ID",     "autocomplete", tipo_doc_opts),
+            ("Número Documento", var_num,   "NUM_DOC",         "int",          None),
+            ("Diagnóstico",      var_diag,  "DIAGNOSTICO",     "fullmatch",    full_diag_opts),
+            ("Autorización",     var_auth,  "AUTORIZACION",    "int9",         None),
+            ("Código Servicio",  var_cs,    "CODIGO_SERVICIO", "alnum",        None),
+            ("Cantidad",         var_qty,   "CANTIDAD",        "int3",         None),
+            ("Valor Unitario",   var_valor, "VLR_UNITARIO",    "int",          None),
+            ("Copago",           var_copago,"COPAGO",          "int",          None),
+            ("Observación",      var_obs,   "OBSERVACION",     "text",         None),
+        ]
+        r = c = 0
+        for label, var, key, ctype, opts in DEFS:
+            if key not in campos_paquete: continue
+            ctk.CTkLabel(scroll, text=label+":").grid(row=r, column=c, sticky="w", padx=5, pady=5)
+            if ctype == "autocomplete":
+                entry = AutocompleteEntry(scroll, opts, textvariable=var, width=250)
+                entry.grid(row=r, column=c+1, sticky="ew", padx=5)
+                var.trace_add("write", lambda *a, v=var: v.set(v.get().upper()))
+            elif ctype == "fullmatch":
+                entry = FullMatchAutocompleteEntry(scroll, full_diag_opts, textvariable=var, width=250)
+                entry.grid(row=r, column=c+1, sticky="ew", padx=5)
+                var.trace_add("write", lambda *a, v=var: v.set("".join(ch for ch in v.get().upper() if ch.isalnum() or ch in [' ','-'])))
+                var.trace_add("write", lambda *a, v=var: v.set(v.get().split(' - ')[0]) if v.get() in full_diag_opts else None)
+            elif ctype == "date":
+                ent = ctk.CTkEntry(scroll, textvariable=var, width=200, placeholder_text="DD/MM/AAAA")
+                ent.grid(row=r, column=c+1, sticky="ew", padx=5)
+                ent.bind("<KeyRelease>", _format_fecha_factory(var, ent))
+            else:
+                ent = ctk.CTkEntry(scroll, textvariable=var, width=200)
+                ent.grid(row=r, column=c+1, sticky="ew", padx=5)
+            field_vars[key] = var
+            c += 2
+            if c >= 6: c = 0; r += 1
+        ctk.CTkButton(win, text="Actualizar", command=_guardar).pack(pady=10)
+
+    # Busca los datos y precarga el formulario
+    def _buscar():
+        rad_str = entry_radicado_var.get().strip()
+        if not rad_str:
+            messagebox.showwarning("Advertencia", "Ingresa un radicado.")
+            return
+        try:
+            rad = int(rad_str)
+        except ValueError:
+            messagebox.showerror("Error", "El radicado debe ser un número.")
+            return
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT at.NUM_PAQUETE
+              FROM ASIGNACION_TIPIFICACION at
+              JOIN TIPIFICACION t ON t.ASIGNACION_ID = at.RADICADO
+             WHERE at.RADICADO = %s
+               AND t.USER_ID = %s
+               AND at.STATUS_ID IN (3,4)
+        """, (rad, user_id))
+        pkg = cur.fetchone()
+        if not pkg:
+            messagebox.showerror("Error", "No autorizado o no existe.")
+            cur.close()
+            return
+        num_pkg = pkg[0]
+        cur.execute("SELECT campo FROM PAQUETE_CAMPOS WHERE num_paquete=%s", (num_pkg,))
+        campos = {r[0] for r in cur.fetchall()}
+        cur.execute("""
+            SELECT at.RADICADO, at.NIT, at.FACTURA,
+                   t.FECHA_SERVICIO,
+                   td_det.AUTORIZACION, td_det.CODIGO_SERVICIO, td_det.CANTIDAD,
+                   td_det.VLR_UNITARIO, td_det.COPAGO, td_det.OBSERVACION,
+                   td.NAME AS TIPO_DOC_NAME,
+                   dx.CODIGO + ' - ' + dx.NOMBRE AS DIAG_NAME,
+                   t.NUM_DOC
+              FROM TIPIFICACION t
+         LEFT JOIN TIPIFICACION_DETALLES td_det ON td_det.TIPIFICACION_ID = t.ID
+         JOIN ASIGNACION_TIPIFICACION at ON at.RADICADO = t.ASIGNACION_ID
+         LEFT JOIN TIPO_DOC td ON td.ID = t.TIPO_DOC_ID
+         LEFT JOIN TBL_CIE10 dx ON dx.CODIGO = t.DIAGNOSTICO
+             WHERE t.ASIGNACION_ID = %s AND t.USER_ID = %s
+        """, (rad, user_id))
+        datos = cur.fetchone() or [None]*13
+        cur.close()
+        entry_radicado_var.set(str(datos[0] or rad))
+        entry_nit_var.set(str(datos[1] or ""))
+        entry_factura_var.set(str(datos[2] or ""))
+        var_fecha.set(datos[3].strftime("%d/%m/%Y") if isinstance(datos[3], datetime.date) else "")
+        var_auth.set(str(datos[4] or ""))
+        var_cs.set(str(datos[5] or ""))
+        var_qty.set(str(datos[6] or ""))
+        var_valor.set(str(datos[7] or ""))
+        var_copago.set(str(datos[8] or ""))
+        var_obs.set(str(datos[9] or ""))
+        var_tipo.set(str(datos[10] or ""))
+        init_diag = str(datos[11] or "")
+        var_diag.set(init_diag.split(' - ')[0] if ' - ' in init_diag else init_diag)
+        var_num.set(str(datos[12] or ""))
+        _render_campos(campos)
+
+    # Guarda los cambios en TIPIFICACION y DETALLES
+    def _guardar():
+    # 1) Recolecta valores
+        updates = {k: v.get().strip() for k, v in field_vars.items()}
+        if not updates:
+            messagebox.showwarning("Advertencia", "No hay datos para actualizar.")
+            return
+
+        # 2) Valida radicado
+        try:
+            rad = int(entry_radicado_var.get())
+        except ValueError:
+            messagebox.showerror("Error", "Radicado inválido.")
+            return
+
+        # 3) Abre cursor
+        cur = conn.cursor()
+
+        # 4) Resuelve ID de Tipo de Documento
+        tipo_name = updates.get('TIPO_DOC_ID')
+        if tipo_name:
+            cur.execute("SELECT ID FROM TIPO_DOC WHERE NAME = %s", (tipo_name,))
+            row = cur.fetchone()
+            updates['TIPO_DOC_ID'] = row[0] if row else None
+
+        # 5) Valida código de Diagnóstico
+        diag_code = updates.get('DIAGNOSTICO')
+        if diag_code:
+            cur.execute("SELECT CODIGO FROM TBL_CIE10 WHERE CODIGO = %s", (diag_code,))
+            updates['DIAGNOSTICO'] = diag_code if cur.fetchone() else None
+
+        # 6) Separa columnas para cada tabla
+        main_cols    = {"FECHA_SERVICIO", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO"}
+        main_updates = {k: updates[k] for k in updates if k in main_cols}
+        det_updates  = {k: updates[k] for k in updates if k not in main_cols}
+
+        # 7) Actualiza tabla TIPIFICACION
+        if main_updates:
+            set_parts = []
+            params = []
+            for k, val in main_updates.items():
+                if k == "FECHA_SERVICIO":
+                    d = datetime.datetime.strptime(val, "%d/%m/%Y").date()
+                    set_parts.append(f"{k} = %s")
+                    params.append(d)
+                elif k in numeric_main:
+                    set_parts.append(f"{k} = %s")
+                    try:
+                        params.append(int(val))
+                    except (ValueError, TypeError):
+                        params.append(None)
+                else:
+                    set_parts.append(f"{k} = %s")
+                    params.append(val)
+            params += [rad, user_id]
+            sql_main = (
+                "UPDATE TIPIFICACION "
+                f"SET {', '.join(set_parts)} "
+                "WHERE ASIGNACION_ID = %s AND USER_ID = %s"
+            )
+            cur.execute(sql_main, params)
+
+        # 8) Actualiza tabla TIPIFICACION_DETALLES
+        if det_updates:
+            set_parts = []
+            params = []
+            for k, val in det_updates.items():
+                set_parts.append(f"{k} = %s")
+                if k in numeric_det:
+                    try:
+                        params.append(int(val))
+                    except (ValueError, TypeError):
+                        params.append(None)
+                else:
+                    params.append(val)
+            params += [rad, user_id]
+            sql_det = (
+                "UPDATE td "
+                "SET " + ", ".join(set_parts) +
+                " FROM TIPIFICACION_DETALLES td"
+                " INNER JOIN TIPIFICACION t ON td.TIPIFICACION_ID = t.ID"
+                " WHERE t.ASIGNACION_ID = %s AND t.USER_ID = %s"
+            )
+            cur.execute(sql_det, params)
+
+        # 9) Confirma y cierra
+        conn.commit()
+        cur.close()
+        messagebox.showinfo("Éxito", "Radicado actualizado correctamente.")
+        win.destroy()  # cierra la ventana de actualización
+        parent_root.deiconify()
+
+    # Construye la UI
+    frm_search = ctk.CTkFrame(win)
+    frm_search.pack(fill="x", padx=20, pady=(20,10))
+    ctk.CTkLabel(frm_search, text="Buscar Radicado:", anchor="w").pack(fill="x")
+    ctk.CTkEntry(frm_search, textvariable=entry_radicado_var).pack(side="left", fill="x", expand=True, pady=5)
+    ctk.CTkButton(frm_search, text="Buscar", command=_buscar).pack(side="right", padx=(10,0))
+    frm_info = ctk.CTkFrame(win)
+    frm_info.pack(fill="x", padx=20, pady=(0,10))
+    for label_text, var in [("Radicado:", entry_radicado_var),("NIT:", entry_nit_var),("Factura:", entry_factura_var)]:
+        cell = ctk.CTkFrame(frm_info); cell.pack(side="left", expand=True, fill="x", padx=5)
+        ctk.CTkLabel(cell, text=label_text, anchor="w").pack(fill="x")
+        ctk.CTkEntry(cell, textvariable=var, state="readonly").pack(fill="x")
+    scroll = ctk.CTkScrollableFrame(win, fg_color="#2b2b2b")
+    scroll.pack(fill="both", expand=True, padx=20, pady=(0,10))
+    for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
+
 def iniciar_calidad(parent_root, conn, current_user_id):
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
@@ -2034,9 +2295,6 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                     
         if 'FECHA_SERVICIO' in widgets:
             widgets['FECHA_SERVICIO'].focus_set()
-
-        if 'FECHA_SERVICIO' in widgets:
-            widgets['FECHA_SERVICIO'].focus_set()
         
         return True
 
@@ -2262,6 +2520,7 @@ def ver_progreso(root, conn):
 
         where_clause = " AND ".join(filtros)
         return where_clause, tuple(params)
+    
 
     # — Filtrar/mostrar solo checks de estado coincidentes —
     def _filtrar_est(event=None):
@@ -2292,7 +2551,10 @@ def ver_progreso(root, conn):
             var.set(val)
 
     # — Carga datos en las dos pestañas según filtros —
+    import datetime  # asegúrate de tener esto al inicio de tu módulo
+
     def actualizar_tabs():
+        # 0) Reconstruye filtros y params
         where, params = construir_filtros()
         if where is None:
             return
@@ -2301,6 +2563,7 @@ def ver_progreso(root, conn):
         frame1 = tabs.tab("Por Estado")
         for w in frame1.winfo_children():
             w.destroy()
+
         cur = conn.cursor()
         sql1 = (
             "SELECT UPPER(s.NAME) AS ESTADO, COUNT(*) AS CNT "
@@ -2311,35 +2574,148 @@ def ver_progreso(root, conn):
             f"WHERE {where} GROUP BY s.NAME ORDER BY s.NAME"
         )
         cur.execute(sql1, params)
-        for i, (est, cnt) in enumerate(cur.fetchall()):
+        rows1 = cur.fetchall()
+        cur.close()
+
+        # Dibuja cada estado y su conteo
+        for i, (est, cnt) in enumerate(rows1):
             ctk.CTkLabel(frame1, text=est).grid(row=i, column=0, sticky="w", padx=5, pady=2)
             ctk.CTkLabel(frame1, text=cnt).grid(row=i, column=1, sticky="e", padx=5, pady=2)
-        cur.close()
+
+        # Calcula total de HECHOS (STATUS_ID 3 + 4)
+        cur2 = conn.cursor()
+        sql_hechos = (
+            "SELECT SUM(CASE WHEN a.STATUS_ID IN (3,4) THEN 1 ELSE 0 END) "
+            "FROM ASIGNACION_TIPIFICACION a "
+            "JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
+            "JOIN USERS u ON t.USER_ID = u.ID "
+            "JOIN STATUS s ON a.STATUS_ID = s.ID "
+            f"WHERE {where}"
+        )
+        cur2.execute(sql_hechos, params)
+        total_hechos = cur2.fetchone()[0] or 0
+        cur2.close()
+
+        fila_final = len(rows1)
+        ctk.CTkLabel(frame1, text="TOTAL", font=("Arial", 12, "bold")) \
+            .grid(row=fila_final, column=0, sticky="w", padx=5, pady=4)
+        ctk.CTkLabel(frame1, text=str(total_hechos), font=("Arial", 12, "bold")) \
+            .grid(row=fila_final, column=1, sticky="e", padx=5, pady=4)
+
+        # — Cálculo del intervalo promedio general entre tipificaciones —
+        cur_int = conn.cursor()
+        sql_int = f"""
+            SELECT AVG(dif) FROM (
+                SELECT DATEDIFF(SECOND,
+                    LAG(t.fecha_creacion) OVER (ORDER BY t.fecha_creacion),
+                    t.fecha_creacion
+                ) AS dif
+                FROM ASIGNACION_TIPIFICACION a
+                JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO
+                JOIN USERS u ON t.USER_ID = u.ID
+                JOIN STATUS s ON a.STATUS_ID = s.ID
+                WHERE {where}
+                    -- excluir los que son exactamente medianoche
+                    AND t.fecha_creacion <> CAST(t.fecha_creacion AS date)
+            ) sub
+            WHERE dif IS NOT NULL
+        """
+        cur_int.execute(sql_int, params)
+        avg_int_sec = cur_int.fetchone()[0] or 0
+        cur_int.close()
+
+        avg_int_td = datetime.timedelta(seconds=int(avg_int_sec))
+        ctk.CTkLabel(frame1,
+            text=f"Intervalo promedio general: {avg_int_td}",
+            font=("Arial", 10, "italic")
+        ).grid(row=fila_final + 1, column=0, columnspan=2, sticky="w", padx=5, pady=4)
+
 
         # — Pestaña "Por Usuario" —
         frame2 = tabs.tab("Por Usuario")
         for w in frame2.winfo_children():
             w.destroy()
-        cur = conn.cursor()
+
+        # 1) Conteos por usuario
+        cur3 = conn.cursor()
         sql2 = (
-            "SELECT u.ID, u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO, "
-            "SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
-            "SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
-            "SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
+            "SELECT u.ID, "
+            "       u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO, "
+            "       SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
+            "       SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
+            "       SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
             "FROM ASIGNACION_TIPIFICACION a "
             "JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
             "JOIN USERS u ON t.USER_ID = u.ID "
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
             f"WHERE {where} GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME ORDER BY USUARIO"
         )
-        cur.execute(sql2, params)
-        headers = ["ID", "USUARIO", "PENDIENTES", "PROCESADOS", "CON_OBS"]
+        cur3.execute(sql2, params)
+        rows2 = cur3.fetchall()
+        cur3.close()
+
+        # 2) Intervalo promedio entre tipificaciones por usuario
+        cur_int_u = conn.cursor()
+        sql_int_user = f"""
+           SELECT user_id,
+               AVG(dif) AS AVG_SEC
+           FROM (
+               SELECT 
+                   u.ID      AS user_id,
+                   DATEDIFF(SECOND,
+                       LAG(t.fecha_creacion) OVER (
+                           PARTITION BY u.ID 
+                           ORDER BY t.fecha_creacion
+                       ),
+                       t.fecha_creacion
+                   ) AS dif
+               FROM ASIGNACION_TIPIFICACION a
+               JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO
+               JOIN USERS u       ON t.USER_ID        = u.ID
+               JOIN STATUS s      ON a.STATUS_ID      = s.ID
+               WHERE {where}
+                 -- excluir los que son exactamente medianoche
+                 AND t.fecha_creacion <> CAST(t.fecha_creacion AS date)
+           ) sub2
+           WHERE dif IS NOT NULL
+           GROUP BY user_id
+       """
+        cur_int_u.execute(sql_int_user, params)
+        rows_int_user = cur_int_u.fetchall()
+        cur_int_u.close()
+        # convertir a dict {user_id: avg_sec}
+        avg_by_user = {uid: sec for uid, sec in rows_int_user}
+
+        # Construir lista final de filas
+        processed = []
+        for id_, usuario, pendientes, procesados, con_obs in rows2:
+            hechos = procesados + con_obs
+            avg_sec_user = avg_by_user.get(id_, 0)
+            td_user = datetime.timedelta(seconds=int(avg_sec_user))
+            processed.append((id_, usuario, pendientes, procesados, con_obs, hechos, str(td_user)))
+
+        # Encabezados con la columna de intervalo
+        headers = ["ID", "USUARIO", "PENDIENTES", "PROCESADOS", "CON_OBS", "TOTAL", "INTERVALO"]
         for j, h in enumerate(headers):
-            ctk.CTkLabel(frame2, text=h).grid(row=0, column=j, padx=5, pady=4, sticky="w")
-        for i, row in enumerate(cur.fetchall(), start=1):
+            ctk.CTkLabel(frame2, text=h, font=("Arial", 12, "bold")) \
+                .grid(row=0, column=j, padx=5, pady=4, sticky="w")
+
+        # Datos por fila
+        for i, row in enumerate(processed, start=1):
             for j, val in enumerate(row):
-                ctk.CTkLabel(frame2, text=val).grid(row=i, column=j, padx=5, pady=2, sticky="w")
-        cur.close()
+                ctk.CTkLabel(frame2, text=str(val)) \
+                    .grid(row=i, column=j, padx=5, pady=2, sticky="w")
+
+        # Total general de HECHOS
+        total_general = sum(r[5] for r in processed)
+        last_row = len(processed) + 1
+        ctk.CTkLabel(frame2, text="TOTAL GENERAL", font=("Arial", 12, "bold")) \
+            .grid(row=last_row, column=0, columnspan=6, sticky="e", padx=5, pady=6)
+        ctk.CTkLabel(frame2, text=str(total_general), font=("Arial", 12, "bold")) \
+            .grid(row=last_row, column=6, sticky="w", padx=5, pady=6)
+
+
+
         
     def exportar_excel(path, headers, rows):
         # 1) Crear DataFrame
@@ -2551,6 +2927,14 @@ def ver_progreso(root, conn):
     
     var_fecha_hasta = tk.StringVar()
     
+    def limpiar_fechas():
+        # 1) Borra las variables para que construir_filtros ignore las fechas
+        var_fecha_desde.set("")
+        var_fecha_hasta.set("")
+        # 2) Borra el texto que queda en los DateEntry (usa su método delete)
+        fecha_desde.delete(0, "end")
+        fecha_hasta.delete(0, "end")
+    
     ctk.CTkLabel(topfrm, text="Desde:").grid(row=0, column=4, sticky="w")
     fecha_desde = DateEntry(topfrm, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_desde)
     fecha_desde.grid(row=0, column=5, padx=(0,20), sticky="w")
@@ -2561,7 +2945,7 @@ def ver_progreso(root, conn):
     fecha_hasta.grid(row=0, column=7, padx=(0,20), sticky="w")
     fecha_hasta.delete(0, 'end')
 
-    ctk.CTkButton(topfrm, text="Limpiar fechas", command=lambda: (var_fecha_desde.set(""), var_fecha_hasta.set("")), width=100).grid(row=0, column=8, padx=(0,20))
+    ctk.CTkButton(topfrm, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=0, column=8, padx=(0,20))
     ctk.CTkButton(topfrm, text="Aplicar filtros", command=actualizar_tabs, width=120).grid(row=0, column=9, padx=(0,20))
     ctk.CTkButton(topfrm,
         text="Exportar",
@@ -2623,9 +3007,8 @@ def ver_progreso(root, conn):
     actualizar_tabs()
 
 
-def actualizar_tabs(win, conn, num_paquete):
+def actualizar_tabs(win, conn, num_paquete,where, params):
     tabs = win._tabview
-
     # -- Pestaña “Por Estado” --
     frame1 = tabs.tab("Por Estado")
     for w in frame1.winfo_children(): w.destroy()
@@ -2640,17 +3023,31 @@ def actualizar_tabs(win, conn, num_paquete):
          ORDER BY s.NAME
     """, (num_paquete,))
     datos = cur.fetchall(); cur.close()
+    
+    for i, (est, cnt) in enumerate(datos):
+        ctk.CTkLabel(frame1, text=est).grid(row=i, column=0, sticky="w", padx=5, pady=2)
+        ctk.CTkLabel(frame1, text=cnt).grid(row=i, column=1, sticky="e", padx=5, pady=2)
 
-    # Encabezados
-    ctk.CTkLabel(frame1, text="ESTADO", anchor="w").grid(row=0, column=0, padx=5, pady=4)
-    ctk.CTkLabel(frame1, text="CANTIDAD", anchor="e").grid(row=0, column=1, padx=5, pady=4)
+    # —> Cálculo total de HECHOS (STATUS_ID 3 + 4)
+    cur2 = conn.cursor()
+    sql_hechos = (
+        "SELECT SUM(CASE WHEN a.STATUS_ID IN (3,4) THEN 1 ELSE 0 END) "
+        "FROM ASIGNACION_TIPIFICACION a "
+        "JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
+        "JOIN USERS u ON t.USER_ID = u.ID "
+        "JOIN STATUS s ON a.STATUS_ID = s.ID "
+        f"WHERE {where}"
+    )
+    cur2.execute(sql_hechos, params)
+    total_hechos = cur2.fetchone()[0] or 0
+    cur2.close()
 
-    # Filas
-    for i, (estado, cnt) in enumerate(datos, start=1):
-        ctk.CTkLabel(frame1, text=estado, anchor="w")\
-            .grid(row=i, column=0, sticky="w", padx=5, pady=2)
-        ctk.CTkLabel(frame1, text=str(cnt), anchor="e")\
-            .grid(row=i, column=1, sticky="e", padx=5, pady=2)
+    # Pintamos la fila "HECHOS" al final
+    fila_final = len(datos)
+    ctk.CTkLabel(frame1, text="HECHOS",   font=("Arial", 12, "bold"))\
+        .grid(row=fila_final, column=0, sticky="w", padx=5, pady=4)
+    ctk.CTkLabel(frame1, text=str(total_hechos), font=("Arial", 12, "bold"))\
+        .grid(row=fila_final, column=1, sticky="e", padx=5, pady=4)
 
 
     # -- Pestaña “Por Usuario” --
@@ -2712,7 +3109,7 @@ def modificar_estado_usuario(root, conn):
     # 1) Crear ventana
     win = ctk.CTkToplevel(root)
     win.title("Modificar Estado de Usuario")
-    win.geometry("500x350")
+    win.geometry("500x400")
     win.grab_set()
     win.protocol("WM_DELETE_WINDOW", lambda w=win: safe_destroy(w))
 
@@ -2832,8 +3229,6 @@ def modificar_estado_usuario(root, conn):
     entry_tipo.focus()
 
 def exportar_paquete(root, conn):
-    import csv
-    from tkinter import filedialog, messagebox, Text, Scrollbar
 
     # 1) Crear ventana
     win = ctk.CTkToplevel(root)
@@ -2858,26 +3253,34 @@ def exportar_paquete(root, conn):
     # 3) Selector de paquete
     ctk.CTkLabel(frm, text="Paquete:").grid(row=0, column=0, sticky="w", pady=(0,5))
     pkg_var = tk.StringVar(value=str(paquetes[0]))
-    ctk.CTkOptionMenu(frm, values=[str(p) for p in paquetes], variable=pkg_var, width=120)\
-        .grid(row=0, column=1, pady=(0,5), sticky="w")
+    ctk.CTkOptionMenu(
+        frm,
+        values=[str(p) for p in paquetes],
+        variable=pkg_var,
+        width=120
+    ).grid(row=0, column=1, pady=(0,5), sticky="w")
 
     # 4) Selector de formato
     ctk.CTkLabel(frm, text="Formato:").grid(row=1, column=0, sticky="w", pady=(0,10))
     fmt_var = tk.StringVar(value="CSV")
-    ctk.CTkOptionMenu(frm, values=["CSV", "TXT"], variable=fmt_var, width=120)\
-        .grid(row=1, column=1, pady=(0,10), sticky="w")
+    ctk.CTkOptionMenu(
+        frm,
+        values=["CSV", "TXT"],
+        variable=fmt_var,
+        width=120
+    ).grid(row=1, column=1, pady=(0,10), sticky="w")
 
     # 5) Área de texto para radicados
-    ctk.CTkLabel(frm, text="Radicados (uno por línea, opcional):").grid(row=2, column=0, columnspan=2, sticky="w")
+    ctk.CTkLabel(frm, text="Radicados (uno por línea, opcional):") \
+        .grid(row=2, column=0, columnspan=2, sticky="w")
     text_frame = tk.Frame(frm)
     text_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(0,10))
-    # Ajustar expansión
     frm.grid_rowconfigure(3, weight=1)
     frm.grid_columnconfigure(1, weight=1)
 
-    scrollbar = Scrollbar(text_frame)
+    scrollbar = tk.Scrollbar(text_frame)
     scrollbar.pack(side="right", fill="y")
-    txt = Text(text_frame, height=8, yscrollcommand=scrollbar.set)
+    txt = tk.Text(text_frame, height=8, yscrollcommand=scrollbar.set)
     txt.pack(side="left", fill="both", expand=True)
     scrollbar.config(command=txt.yview)
 
@@ -2887,59 +3290,58 @@ def exportar_paquete(root, conn):
         fmt = fmt_var.get()
         ext = ".txt" if fmt == "TXT" else ".csv"
         sep = ";" if fmt == "TXT" else ","
+
+        # Ajustar diálogo según formato
+        filetypes = [("Text Files", "*.txt")] if fmt == "TXT" else [("CSV Files", "*.csv")]
         path = filedialog.asksaveasfilename(
-            filetypes=[("CSV Files", "*.csv")],
-            defaultextension=".csv",
-            initialfile="reporte.csv",   
-            title="Guardar como CSV" 
+            filetypes=filetypes,
+            defaultextension=ext,
+            initialfile=f"reporte{ext}",
+            title=f"Guardar como {fmt}"
         )
         if not path:
             return
 
         # 7) Leo radicados del textarea
-        lines = [line.strip() for line in txt.get("1.0", "end").splitlines()]
-        radicados = []
-        for L in lines:
-            if L.isdigit():
-                radicados.append(int(L))
-        radicados = sorted(set(radicados))
+        lines = txt.get("1.0", "end").splitlines()
+        radicados = sorted({int(L) for L in lines if L.strip().isdigit()})
 
-        # 8) Construyo la SQL base
+        # 8) Construyo la SQL base (sin WHERE)
         base_sql = """
             SELECT
               a.RADICADO                                   AS RADICADO,
               CONVERT(varchar(10), t.FECHA_SERVICIO, 103)  AS FECHA_SERVICIO,
               d.AUTORIZACION                               AS AUTORIZACION,
               d.CODIGO_SERVICIO                            AS COD_SERVICIO,
-              CONVERT(int, d.CANTIDAD)                     AS CANTIDAD,
-              CONVERT(int, d.VLR_UNITARIO)                 AS VLR_UNITARIO,
+              d.CANTIDAD                                   AS CANTIDAD,
+              d.VLR_UNITARIO                               AS VLR_UNITARIO,
               t.DIAGNOSTICO                                AS DIAGNOSTICO,
-              CONVERT(varchar(10), t.CreatedOn, 103)       AS CreatedOn,
+              t.fecha_creacion                             AS CreatedOn,
               u2.NUM_DOC                                   AS ModifiedBy,
               td.NAME                                      AS TipoDocumento,
-              a.NUM_DOC                                    AS NumeroDocumento,
-              CONVERT(int, d.COPAGO)                       AS CM_COPAGO
+              t.NUM_DOC                                    AS NumeroDocumento,
+              d.COPAGO                                     AS CM_COPAGO
             FROM ASIGNACION_TIPIFICACION a
-            JOIN TIPIFICACION t  ON t.ASIGNACION_ID = a.RADICADO
-            JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID = t.ID
-            JOIN USERS u2       ON u2.ID = t.USER_ID
-            JOIN TIPO_DOC td    ON td.ID = t.TIPO_DOC_ID
-            WHERE a.NUM_PAQUETE = %s
+            JOIN TIPIFICACION t             ON t.ASIGNACION_ID        = a.RADICADO
+            JOIN TIPIFICACION_DETALLES d    ON d.TIPIFICACION_ID      = t.ID
+            JOIN USERS u2                   ON u2.ID                 = t.USER_ID
+            JOIN TIPO_DOC td                ON td.ID                 = t.TIPO_DOC_ID
         """
 
-        params = [pkg]
-
-        # 9) Si hay radicados en textarea, agrego filtro
+        # 9) Elijo la cláusula WHERE según si hay radicados
         if radicados:
-            placeholders = ",".join("%s" for _ in radicados)
-            base_sql += f" AND a.RADICADO IN ({placeholders})"
-            params.extend(radicados)
+            ph = ",".join("%s" for _ in radicados)
+            where_clause = f"WHERE a.RADICADO IN ({ph})"
+            params = radicados
+        else:
+            where_clause = "WHERE a.NUM_PAQUETE = %s"
+            params = [pkg]
 
-        base_sql += " ORDER BY a.RADICADO, t.FECHA_SERVICIO"
+        sql = f"{base_sql} {where_clause} ORDER BY a.RADICADO, t.FECHA_SERVICIO"
 
-        # 10) Ejecuto y exporto
+        # 10) Ejecutar y escribir archivo
         cur2 = conn.cursor()
-        cur2.execute(base_sql, params)
+        cur2.execute(sql, params)
         rows = cur2.fetchall()
         headers = [col[0] for col in cur2.description]
         cur2.close()
@@ -2949,16 +3351,15 @@ def exportar_paquete(root, conn):
             writer.writerow(headers)
             writer.writerows(rows)
 
-        messagebox.showinfo("Exportar",
-            f"Paquete {pkg} exportado en:\n{path}\n"
+        messagebox.showinfo(
+            "Exportar",
+            f"Exportación completada:\n{path}\n"
             f"{len(rows)} registros."
         )
         win.destroy()
 
-    ctk.CTkButton(frm, text="Exportar", command=_export, width=200)\
+    ctk.CTkButton(frm, text="Exportar", command=_export, width=200) \
         .grid(row=4, column=0, columnspan=2, pady=(10,0))
-
-    win.mainloop()
 
 def actualizar_usuario(root, conn, user_id):
     """
@@ -2971,6 +3372,10 @@ def actualizar_usuario(root, conn, user_id):
     win.title("Actualizar Mis Datos")
     win.geometry("400x300")
     win.grab_set()
+    
+    letters_vcmd = win.register(
+    lambda P: bool(re.fullmatch(r"[A-Za-zÑñ ]*", P))
+    )
 
     # 2) Variables de texto
     first_name_var = tk.StringVar()
@@ -3019,11 +3424,21 @@ def actualizar_usuario(root, conn, user_id):
             frm,
             textvariable=var,
             width=250,
-            show="*" if is_password else None
+            show="*" if is_password else None,
+            validate="key" if not is_password else "none",
+            validatecommand=(letters_vcmd, "%P") if not is_password else None
         )
         entry.grid(row=i, column=1, pady=5)
         if i == 0:
             entry.focus()
+
+        # Forzar mayúsculas en nombres/apellidos
+        if not is_password:
+            def on_write(*args, v=var):
+                txt = v.get()
+                if txt != txt.upper():
+                    v.set(txt.upper())
+            var.trace_add("write", on_write)
 
     # 5) Función para validar y guardar cambios
     def guardar_usuario():
@@ -3109,8 +3524,9 @@ if "--crear-usuario" in sys.argv:
                     self._tk_root.withdraw()
 
                 # Validaciones
-                def only_upper_letters(input_str):
-                    return all(c.isalpha() or c in ('ñ','Ñ') for c in input_str)
+                def only_letters_and_spaces(P):
+                    # P es el texto completo tras el cambio
+                    return all(c.isalpha() or c == ' ' for c in P)
 
                 def only_digits(P):
                     return P == "" or P.isdigit()
@@ -3120,7 +3536,7 @@ if "--crear-usuario" in sys.argv:
                     return re.match(regex, email) is not None
 
                 # Aquí usamos el register() del Tk oculto
-                vcmd_letters = (self._tk_root.register(only_upper_letters), '%P')
+                vcmd_letters = (self._tk_root.register(only_letters_and_spaces), '%P')
                 vcmd_digits  = (self._tk_root.register(only_digits), '%P')
 
                 # Crear ventana secundaria
@@ -3176,9 +3592,9 @@ if "--crear-usuario" in sys.argv:
                             textvariable=var,
                             width=300,
                             validate="key",
-                            validatecommand=cmd
+                            validatecommand=vcmd_letters   # <-- usa el validador actualizado
                         )
-                        # Convierte a mayúsculas al soltar cada tecla
+                        # Forzar mayúsculas tras cada tecla
                         widget.bind("<KeyRelease>", lambda e, v=var: v.set(v.get().upper()))
 
                     elif kind == "entry_digit":
@@ -3320,10 +3736,6 @@ if "--crear-usuario" in sys.argv:
     
     
 if "--iniciar-tipificacion" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
         # configura tema (igual que en AppTk)
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
@@ -3351,10 +3763,6 @@ if "--iniciar-tipificacion" in sys.argv:
         sys.exit(0)
         
 if "--iniciar-calidad" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
         # configura tema (igual que en AppTk)
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
@@ -3382,10 +3790,6 @@ if "--iniciar-calidad" in sys.argv:
         sys.exit(0)
         
 if "--ver-progreso" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
         # configura tema (igual que en AppTk)
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
@@ -3409,10 +3813,6 @@ if "--ver-progreso" in sys.argv:
         sys.exit(0)
         
 if "--exportar-paquete" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
         # configura tema (igual que en AppTk)
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
@@ -3420,11 +3820,22 @@ if "--exportar-paquete" in sys.argv:
         root = tk.Tk()
         root.withdraw()
 
+        # 2) conecta a la BD
+        conn = conectar_sql_server("DB_DATABASE")
+        if conn is None:
+            sys.exit("No se pudo conectar a la BD.")
+
+        # 3) extrae el user_id que viene justo después del flag
+        idx = sys.argv.index("--exportar-paquete")
+            
+        # 4) llama a tu función
+        exportar_paquete(root, conn)
+
+        # 5) arranca el loop de Tk para CustomTkinter
+        root.mainloop()
+        sys.exit(0)
+
 if "--actualizar-datos" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
         # configura tema (igual que en AppTk)
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
@@ -3442,7 +3853,7 @@ if "--actualizar-datos" in sys.argv:
         try:
             user_id = int(sys.argv[idx + 1])
         except Exception:
-            sys.exit("Falta user_id tras --iniciar-calidad")
+            sys.exit("Falta user_id tras --actualizar-dato")
             
         # 4) llama a tu función
         actualizar_usuario(root, conn, user_id)
@@ -3451,11 +3862,36 @@ if "--actualizar-datos" in sys.argv:
         root.mainloop()
         sys.exit(0)
         
+if "--modificar-radicado" in sys.argv:
+    # Configura el tema
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("dark-blue")
+
+    # Crea el root (no lo ocultes)
+    root = tk.Tk()
+
+    # Conectar a la base de datos
+    conn = conectar_sql_server("DB_DATABASE")
+    if conn is None:
+        sys.exit("No se pudo conectar a la BD.")
+    print("Conexión exitosa")
+
+    # Extrae el user_id que viene justo después del flag
+    idx = sys.argv.index("--modificar-radicado")
+    try:
+        user_id = int(sys.argv[idx + 1])
+    except Exception:
+        sys.exit("Falta user_id tras --modificar-radicado")
+    
+    # Llama a tu función para modificar radicado
+    modificar_radicado(root, conn, user_id)
+
+    # Inicia el loop de Tkinter
+    root.mainloop()
+    sys.exit(0)
+
+        
 if "--desactivar-usuario" in sys.argv:
-        import tkinter as tk
-        from tkinter import messagebox
-        import customtkinter as ctk
-        from db_connection import conectar_sql_server
         # configura tema (igual que en AppTk)
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
@@ -3559,7 +3995,45 @@ def styled_window(parent, title, bg_file, width, height):
 
     return win, content
 
+class BlurFrame(QtWidgets.QFrame):
+    def __init__(self, bg_blur_pixmap, corner_radius=20, overlay_alpha=155, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bg_blur = bg_blur_pixmap
+        self.corner_radius = corner_radius
+        self.overlay_color = QtGui.QColor(0, 0, 0, overlay_alpha)
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        # Máscara redondeada inicial
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), corner_radius, corner_radius)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
+    def resizeEvent(self, event):
+        # Actualiza la máscara en cada resize
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), self.corner_radius, self.corner_radius)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Clip redondeado
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), self.corner_radius, self.corner_radius)
+        painter.setClipPath(path)
+
+        # Dibujar sólo la porción borrosa
+        offset = self.mapTo(self.window(), QPoint(0, 0))
+        cropped = self.bg_blur.copy(QtCore.QRect(offset, self.size()))
+        painter.drawPixmap(0, 0, cropped)
+
+        # Overlay semitransparente
+        painter.fillPath(path, self.overlay_color)
+        painter.end()
+
+        super().paintEvent(event)
+        
 class DashboardWindow(QtWidgets.QMainWindow):
     def __init__(self, user_id, first_name, last_name, parent=None):
         super().__init__(parent)
@@ -3569,8 +4043,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.user_id = user_id
         self.first_name = first_name
         self.last_name = last_name
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
+        self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
+        self.center_on_screen()
+
 
         # Conexión a BD
         self.conn = conectar_sql_server("DB_DATABASE")
@@ -3579,7 +4054,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 None, "Error", "No se pudo conectar a la base de datos."
             )
             sys.exit(1)
-
+            
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("dark-blue")
         # Configuración de la ventana
         self.setWindowTitle("Dashboard · Capturador De Datos")
         self.resize(900, 900)
@@ -3598,6 +4075,33 @@ class DashboardWindow(QtWidgets.QMainWindow):
             )
             palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
             self.setPalette(palette)
+            
+        pix = QtGui.QPixmap(bg_path).scaled(
+            self.size(),
+            QtCore.Qt.KeepAspectRatioByExpanding,
+            QtCore.Qt.SmoothTransformation
+        )
+        
+        # Aplicar el fondo normal
+        palette = QtGui.QPalette()
+        palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
+        self.setPalette(palette)
+
+        # Crear la versión borrosa del mismo pixmap
+        scene = QGraphicsScene()
+        item = QGraphicsPixmapItem(pix)
+        blur = QGraphicsBlurEffect()
+        blur.setBlurRadius(15)
+        item.setGraphicsEffect(blur)
+        scene.addItem(item)
+
+        img = QImage(pix.size(), QImage.Format_ARGB32_Premultiplied)
+        img.fill(QtCore.Qt.transparent)
+        painter = QPainter(img)
+        scene.render(painter)
+        painter.end()
+
+        self.bg_blur_pix = QtGui.QPixmap.fromImage(img)
 
         # ——————————————————————————————
         # 2) Panel central semitransparente
@@ -3608,14 +4112,13 @@ class DashboardWindow(QtWidgets.QMainWindow):
         v_layout.setContentsMargins(0, 0, 0, 0)
         v_layout.setSpacing(0)
 
-        self.panel = QtWidgets.QFrame()
+        self.panel = BlurFrame(self.bg_blur_pix, corner_radius=20)
         self.panel.setObjectName("dashboardPanel")
+        # Quitas el border-radius de la stylesheet o lo dejas solo como “seguro”:
         self.panel.setStyleSheet("""
-            QFrame#dashboardPanel {
-                background-color: rgba(0, 0, 0, 150);
-                border-radius: 20px;
-            }
+            QFrame#dashboardPanel { border: none; }
         """)
+        # Aplicas tu shadow y layout como antes
         shadow = QGraphicsDropShadowEffect(self.panel)
         shadow.setBlurRadius(20)
         shadow.setOffset(0, 4)
@@ -3624,9 +4127,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
         # Blur (frosted glass)
         blur = QGraphicsBlurEffect(self.panel)
-        blur.setBlurRadius(8)
+        blur.setBlurRadius(15)
         p_layout = QtWidgets.QVBoxLayout(self.panel)
-        p_layout.setContentsMargins(40, 40, 40, 40)   # más padding interno
+        p_layout.setContentsMargins(50, 50, 50, 50)   # más padding interno
         p_layout.setSpacing(16)
         
         p_layout.addSpacing(40)
@@ -3653,18 +4156,42 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # ——————————————————————————————
         # 4) Selector de rol
         # ——————————————————————————————
+        class PopupOnClickFilter(QtCore.QObject):
+            def __init__(self, combo):
+                super().__init__(combo)
+                self.combo = combo
+
+            def eventFilter(self, obj, ev):
+                if ev.type() == QtCore.QEvent.MouseButtonPress:
+                    self.combo.showPopup()
+                    return True
+                return False
+
+        # …
+
         self.cmb_role = QtWidgets.QComboBox()
+        self.cmb_role.setEditable(True)
+        le = self.cmb_role.lineEdit()
+        le.setAlignment(QtCore.Qt.AlignCenter)
+        le.setReadOnly(True)
+
+        # Instalamos el filtro
+        f = PopupOnClickFilter(self.cmb_role)
+        le.installEventFilter(f)
+
         self.cmb_role.setStyleSheet("""
             QComboBox {
                 background-color: rgba(255,255,255,200);
                 border-radius: 10px;
-                padding: 5px 10px;
+                padding: 8px 16px;
                 font-size: 14px;
                 font-weight: bold;
             }
             QComboBox::drop-down { border: none; }
         """)
         p_layout.addWidget(self.cmb_role, alignment=QtCore.Qt.AlignCenter)
+
+
         
         p_layout.addSpacing(40)
 
@@ -3747,24 +4274,27 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # Definición de botones por rol
         btns_by_role = {
             1: [
-                ("Cargar Paquete",      self.on_cargar_paquete),
-                ("Crear Usuario",       self.on_crear_usuario),
-                ("Actualizar Datos",    self.on_actualizar_datos),
-                ("Ver Progreso",        self.on_ver_progreso),
-                ("Desactivar Usuario",    self.on_modificar_estado_usuario),
-                ("Exportar Datos",      self.on_exportar_paquete),
+                ("Cargar Paquete",                          self.on_cargar_paquete),
+                ("Crear Usuario",                           self.on_crear_usuario),
+                ("Actualizar Datos",                        self.on_actualizar_datos),
+                ("Modificar Datos Capturados",              self.on_modificar_radicado),
+                ("Ver Progreso",                            self.on_ver_progreso),
+                ("Desactivar Usuario",                      self.on_modificar_estado_usuario),
+                ("Exportar Datos",                          self.on_exportar_paquete),
             ],
             2: [
-                ("Capturar Datos",      self.on_iniciar_digitacion),
-                ("Actualizar Datos",    self.on_actualizar_datos),
-                ("Ver Progreso",        self.on_ver_progreso),
-                ("Exportar Datos",      self.on_exportar_paquete),
+                ("Capturar Datos",                          self.on_iniciar_digitacion),
+                ("Actualizar Datos",                        self.on_actualizar_datos),
+                ("Modificar Datos Capturados",              self.on_modificar_radicado),
+                ("Ver Progreso",                            self.on_ver_progreso),
+                ("Exportar Datos",                          self.on_exportar_paquete),
             ],
             3: [
-                ("Validar Calidad",     self.on_iniciar_calidad),
-                ("Actualizar Datos",    self.on_actualizar_datos),
-                ("Ver Progreso",        self.on_ver_progreso),
-                ("Exportar Datos",      self.on_exportar_paquete),
+                ("Validar Calidad",                         self.on_iniciar_calidad),
+                ("Actualizar Datos",                        self.on_actualizar_datos),
+                ("Modificar Datos Capturados",              self.on_modificar_radicado),
+                ("Ver Progreso",                            self.on_ver_progreso),
+                ("Exportar Datos",                          self.on_exportar_paquete),
             ],
         }
 
@@ -4182,6 +4712,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
             sys.executable,
             script,
             "--desactivar-usuario",
+            str(self.user_id)          # <–– Aquí debe ir el user_id
+        ])
+        pass
+    
+    def on_modificar_radicado(self):
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--modificar-radicado",
             str(self.user_id)          # <–– Aquí debe ir el user_id
         ])
         pass
