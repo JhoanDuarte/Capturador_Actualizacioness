@@ -1120,6 +1120,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             # En lugar de win.destroy + reiniciar toda la función,
             # simplemente recargamos la siguiente asignación
             if not load_assignment():
+                if 'FECHA_SERVICIO' in widgets:
+                    widgets['FECHA_SERVICIO'].focus_set()
                 messagebox.showinfo("Sin asignaciones", "No hay más asignaciones pendientes.")
                 win.destroy()
 
@@ -2398,6 +2400,8 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             # En lugar de win.destroy + reiniciar toda la función,
             # simplemente recargamos la siguiente asignación
             if not load_assignment():
+                if 'FECHA_SERVICIO' in widgets:
+                    widgets['FECHA_SERVICIO'].focus_set()
                 messagebox.showinfo("Sin asignaciones", "No hay más asignaciones pendientes.")
                 win.destroy()
 
