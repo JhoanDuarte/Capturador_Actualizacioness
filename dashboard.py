@@ -922,63 +922,61 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     # Validar y guardar en BD
     # -----------------------------
     def validate_and_save(final):
-    # ¿Alguna observación completada?
-        any_obs = any(
-            dv.get('OBSERVACION', {}).get('var').get().strip()
-            for dv in detail_vars
-        )
-        ok = True
+            # 1) ¿Alguna observación completada?
+            any_obs = any(
+                (lambda v: v.get().strip())(dv.get('OBSERVACION', {}).get('var'))
+                if dv.get('OBSERVACION', {}).get('var') else False
+                for dv in detail_vars
+            )
+            ok = True
 
-        if not any_obs:
-            # Chequeo obligatorio de fecha si existe
-            if 'FECHA_SERVICIO' in field_vars:
-                ok &= val_fecha()
+            if not any_obs:
+                # 2) Chequeo obligatorio de fecha si existe
+                if 'FECHA_SERVICIO' in field_vars:
+                    ok &= val_fecha()
 
-            # Campos fijos obligatorios
-            for k, v in field_vars.items():
-                w = widgets[k]
-                if not v.get().strip():
-                    w.configure(border_color='red', border_width=2)
-                    ok = False
-                else:
-                    w.configure(border_color='#2b2b2b', border_width=1)
-                    
-            if 'TIPO_DOC_ID' in field_vars:
-                # val_tipo() retorna False si no existe en la tabla
-                if not val_tipo():
-                    ok = False
-            if 'DIAGNOSTICO' in field_vars:
-                if not val_diag():
-                    ok = False
-
-            # Detalle: si no hay observación en ese bloque, validar sus campos
-            for dv in detail_vars:
-                obs = dv.get('OBSERVACION', {}).get('var').get().strip()
-                if obs:
-                    # Si éste bloque tiene observación, salta validación de sus campos
-                    continue
-
-                # Validar AUTORIZACION si existe
-                if 'VALIDAR_AUTORIZACION' in dv and callable(dv['VALIDAR_AUTORIZACION']):
-                    if not dv['VALIDAR_AUTORIZACION']():
-                        ok = False
-
-                # Resto de campos del detalle: solo los que almacenan dict {'var','widget'}
-                for campo, info in dv.items():
-                    if not isinstance(info, dict):
-                        continue  # saltar funciones u otras entradas
-                    # ya omitimos VALIDAR_AUTORIZACION y OBSERVACION
-                    if campo == 'OBSERVACION':
-                        continue
-
-                    w = info['widget']
-                    if not info['var'].get().strip():
+                # 3) Campos fijos obligatorios
+                for k, var in field_vars.items():
+                    w = widgets[k]
+                    if not var.get().strip():
                         w.configure(border_color='red', border_width=2)
                         ok = False
                     else:
                         w.configure(border_color='#2b2b2b', border_width=1)
 
-        return ok
+                # 4) Validaciones específicas
+                if 'TIPO_DOC_ID' in field_vars and not val_tipo():
+                    ok = False
+                if 'DIAGNOSTICO'  in field_vars and not val_diag():
+                    ok = False
+
+                # 5) Detalle: si no hay observación en ese bloque, validar sus campos
+                for dv in detail_vars:
+                    # lectura segura de OBSERVACION
+                    var_obs = dv.get('OBSERVACION', {}).get('var')
+                    obs = var_obs.get().strip() if var_obs else ""
+                    if obs:
+                        # si hay observación, salto validación de este bloque
+                        continue
+
+                    # 5a) Validar AUTORIZACION si existe
+                    if 'VALIDAR_AUTORIZACION' in dv and callable(dv['VALIDAR_AUTORIZACION']):
+                        if not dv['VALIDAR_AUTORIZACION']():
+                            ok = False
+
+                    # 5b) Validar el resto de campos dinámicos
+                    for campo, info in dv.items():
+                        # saltar validadores y OBSERVACION
+                        if not isinstance(info, dict) or campo == 'OBSERVACION':
+                            continue
+                        w = info['widget']
+                        if not info['var'].get().strip():
+                            w.configure(border_color='red', border_width=2)
+                            ok = False
+                        else:
+                            w.configure(border_color='#2b2b2b', border_width=1)
+
+            return ok
 
     def load_assignment():
         """Carga aleatoriamente un radicado pendiente y actualiza los widgets."""
@@ -1081,7 +1079,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             copago = dv.get('COPAGO', {}).get('var').get().strip() or None
             copago = float(copago) if copago else None
 
-            obs    = dv.get('OBSERVACION', {}).get('var').get().strip() or None
+            obs_var = dv.get('OBSERVACION', {}).get('var')
+            obs     = obs_var.get().strip() if obs_var and obs_var.get().strip() else None
             if obs:
                 tiene_obs = True
 
@@ -2230,7 +2229,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
             # Detalle: si no hay observación en ese bloque, validar sus campos
             for dv in detail_vars:
-                obs = dv.get('OBSERVACION', {}).get('var').get().strip()
+                
+                var_obs = dv.get('OBSERVACION', {}).get('var')
+                obs = var_obs.get().strip() if var_obs else ""
                 if obs:
                     # Si éste bloque tiene observación, salta validación de sus campos
                     continue
@@ -2360,7 +2361,8 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             copago = dv.get('COPAGO', {}).get('var').get().strip() or None
             copago = float(copago) if copago else None
 
-            obs    = dv.get('OBSERVACION', {}).get('var').get().strip() or None
+            obs_var = dv.get('OBSERVACION', {}).get('var')
+            obs     = obs_var.get().strip() if obs_var and obs_var.get().strip() else None
             if obs:
                 tiene_obs = True
 
