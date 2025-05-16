@@ -778,17 +778,21 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
                 def val_autorizacion(e=None, var=var, w=w, lbl=lbl_err):
                     txt = var.get().strip()
+                    # Permitimos campo vacío
                     if not txt:
-                        w.configure(border_color='red', border_width=2)
-                        lbl.configure(text='Autorización obligatoria')
-                        return False
+                        w.configure(border_color='#2b2b2b', border_width=1)
+                        lbl.configure(text='')
+                        return True
+                    # Si no está vacío, debe ser exactamente 9 dígitos
                     if len(txt) != 9:
                         w.configure(border_color='red', border_width=2)
                         lbl.configure(text='Debe tener 9 dígitos')
                         return False
+                    # Todo ok
                     w.configure(border_color='#2b2b2b', border_width=1)
                     lbl.configure(text='')
                     return True
+
 
                 w.bind('<FocusOut>', val_autorizacion)
                 dv['VALIDAR_AUTORIZACION'] = val_autorizacion
@@ -959,18 +963,30 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
                         # si hay observación, salto validación de este bloque
                         continue
 
-                    # 5a) Validar AUTORIZACION si existe
-                    if 'VALIDAR_AUTORIZACION' in dv and callable(dv['VALIDAR_AUTORIZACION']):
-                        if not dv['VALIDAR_AUTORIZACION']():
-                            ok = False
-
                     # 5b) Validar el resto de campos dinámicos
                     for campo, info in dv.items():
                         # saltar validadores y OBSERVACION
                         if not isinstance(info, dict) or campo == 'OBSERVACION':
                             continue
-                        w = info['widget']
-                        if not info['var'].get().strip():
+                        w   = info['widget']
+                        val = info['var'].get().strip()
+
+                        # AUTORIZACION puede ir vacía
+                        if campo == 'AUTORIZACION':
+                            # si hay texto, validamos su longitud
+                            if val:
+                                if len(val) != 9:
+                                    w.configure(border_color='red', border_width=2)
+                                    ok = False
+                                else:
+                                    w.configure(border_color='#2b2b2b', border_width=1)
+                            else:
+                                # vacío permitido
+                                w.configure(border_color='#2b2b2b', border_width=1)
+                            continue
+
+                        # para los demás, son obligatorios
+                        if not val:
                             w.configure(border_color='red', border_width=2)
                             ok = False
                         else:
@@ -2054,10 +2070,6 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
                 def val_autorizacion(e=None, var=var, w=w, lbl=lbl_err):
                     txt = var.get().strip()
-                    if not txt:
-                        w.configure(border_color='red', border_width=2)
-                        lbl.configure(text='Autorización obligatoria')
-                        return False
                     if len(txt) != 9:
                         w.configure(border_color='red', border_width=2)
                         lbl.configure(text='Debe tener 9 dígitos')
@@ -2236,21 +2248,31 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                     # Si éste bloque tiene observación, salta validación de sus campos
                     continue
 
-                # Validar AUTORIZACION si existe
-                if 'VALIDAR_AUTORIZACION' in dv and callable(dv['VALIDAR_AUTORIZACION']):
-                    if not dv['VALIDAR_AUTORIZACION']():
-                        ok = False
 
                 # Resto de campos del detalle: solo los que almacenan dict {'var','widget'}
                 for campo, info in dv.items():
-                    if not isinstance(info, dict):
-                        continue  # saltar funciones u otras entradas
-                    # ya omitimos VALIDAR_AUTORIZACION y OBSERVACION
-                    if campo == 'OBSERVACION':
+                    # saltar validadores y OBSERVACION
+                    if not isinstance(info, dict) or campo == 'OBSERVACION':
+                         continue
+                    w   = info['widget']
+                    val = info['var'].get().strip()
+
+                    # AUTORIZACION puede ir vacía
+                    if campo == 'AUTORIZACION':
+                        # si hay texto, validamos su longitud
+                        if val:
+                            if len(val) != 9:
+                                w.configure(border_color='red', border_width=2)
+                                ok = False
+                            else:
+                                w.configure(border_color='#2b2b2b', border_width=1)
+                        else:
+                            # vacío permitido
+                            w.configure(border_color='#2b2b2b', border_width=1)
                         continue
 
-                    w = info['widget']
-                    if not info['var'].get().strip():
+                    # para los demás, son obligatorios
+                    if not val:
                         w.configure(border_color='red', border_width=2)
                         ok = False
                     else:
