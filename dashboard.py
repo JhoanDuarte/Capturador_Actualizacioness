@@ -259,6 +259,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         WHERE UPPER(LTRIM(RTRIM(TIPO_PAQUETE))) = %s AND TIPO_PAQUETE = 'DIGITACION'
     """, ("DIGITACION",))
     pkg = cur.fetchone()[0] or 0
+    tipo_paquete = 'DIGITACION';
     cur.close()
 
     
@@ -288,8 +289,13 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     cur.close()
     
     cur2 = conn.cursor()
-    cur2.execute("SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE = %s", (pkg,))
-    campos_paquete = {r[0] for r in cur2.fetchall()}
+    cur2.execute("""
+        SELECT campo
+        FROM PAQUETE_CAMPOS
+        WHERE NUM_PAQUETE = %s
+          AND tipo_paquete = %s
+    """, (pkg, tipo_paquete))
+    campos_paquete = {row[0] for row in cur2.fetchall()}
     cur2.close()
 
     # 3) Ventana principal
@@ -897,11 +903,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         add_service_block()
     
         def remove_service_block():
-            
             nonlocal dynamic_row, dynamic_col
-
             if len(service_frames) <= 1:
-                return  # nada que eliminar
+                return
 
             # Sacamos el último bloque de frames y lo destruimos
             last_frames = service_frames.pop()
@@ -1143,6 +1147,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
 
     bind_select_all(card)
+    def remove_service_block():
+        # se redefinirá más abajo si hay bloques dinámicos
+        pass
     # -----------------------------
     # Botonera
     # -----------------------------
@@ -1484,6 +1491,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         WHERE UPPER(LTRIM(RTRIM(TIPO_PAQUETE))) = %s AND TIPO_PAQUETE = 'CALIDAD'
     """, ("CALIDAD",))
     pkg = cur.fetchone()[0] or 0
+    tipo_paquete = 'CALIDAD'
     cur.close()
 
 
@@ -1511,8 +1519,13 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     cur.close()
     
     cur2 = conn.cursor()
-    cur2.execute("SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE = %s", (pkg,))
-    campos_paquete = {r[0] for r in cur2.fetchall()}
+    cur2.execute("""
+        SELECT campo
+        FROM PAQUETE_CAMPOS
+        WHERE NUM_PAQUETE = %s
+          AND tipo_paquete = %s
+    """, (pkg, tipo_paquete))
+    campos_paquete = {row[0] for row in cur2.fetchall()}
     cur2.close()
 
     # 3) Ventana principal
@@ -4366,42 +4379,28 @@ class DashboardWindow(QtWidgets.QMainWindow):
         if not hasattr(self, '_tk_root'):
             self._tk_root = tk.Tk()
             self._tk_root.withdraw()
-    # 0) Selección de Tipo de Paquete
-        if not hasattr(self, '_tk_root'):
-            self._tk_root = tk.Tk()
-            self._tk_root.withdraw()
 
-        # ─── Ventana modal ─────────────────────────────────────────────────────────────
+        # ─── 0) Selección de Tipo de Paquete ────────────────────────────────────────────
         sel = ctk.CTkToplevel(self._tk_root)
-        sel.configure(fg_color="#2f2f2f")  # fondo gris oscuro
+        sel.configure(fg_color="#2f2f2f")
         sel.title("Seleccione Tipo de Paquete")
 
-        # Variable para saber si aceptó o cerró
         accepted = tk.BooleanVar(value=False)
         tipo_paquete_var = tk.StringVar(value="DIGITACION")
 
-        # ─── Etiqueta principal ────────────────────────────────────────────────────────
         ctk.CTkLabel(
-        sel,
-        text="Tipo de Paquete:",
-        text_color="white",
-        fg_color="#2f2f2f",
-        font=("Arial", 14, "bold")
+            sel, text="Tipo de Paquete:", text_color="white",
+            fg_color="#2f2f2f", font=("Arial", 14, "bold")
         ).pack(pady=10)
 
-        # ─── Menú desplegable con fondo blanco ─────────────────────────────────────────
         ctk.CTkOptionMenu(
-            sel,
-            values=["DIGITACION", "CALIDAD"],
+            sel, values=["DIGITACION", "CALIDAD"],
             variable=tipo_paquete_var,
-            fg_color="#FFFFFF",              # fondo blanco
-            button_color="#F0F0F0",          # botón desplegable claro
+            fg_color="#FFFFFF", button_color="#F0F0F0",
             button_hover_color="#E0E0E0",
-            dropdown_fg_color="#FFFFFF",
-            dropdown_text_color="black",
+            dropdown_fg_color="#FFFFFF", dropdown_text_color="black",
             dropdown_hover_color="#DDDDDD",
-            text_color="black",
-            corner_radius=8,
+            text_color="black", corner_radius=8,
             font=("Arial", 12, "bold")
         ).pack(pady=5)
 
@@ -4409,45 +4408,37 @@ class DashboardWindow(QtWidgets.QMainWindow):
             accepted.set(True)
             sel.destroy()
 
-        # ─── Botones “Aceptar” / “Cancelar” con azul del dashboard ─────────────────────
-        for txt, cmd, side in [
-            ("Aceptar", on_accept, "left"),
-            ("Cancelar", sel.destroy, "right")
-        ]:
-            ctk.CTkButton(
-                sel,
-                text=txt,
-                command=cmd,
-                fg_color="#007BFF",    # mismo azul del dashboard
-                hover_color="#339CFF",
-                text_color="white",
-                corner_radius=20,
-                width=100,
-                height=35,
-                font=("Arial", 12, "bold")
-            ).pack(side=side, padx=20, pady=10)
+        ctk.CTkButton(
+            sel, text="Aceptar", command=on_accept,
+            fg_color="#007BFF", hover_color="#339CFF",
+            text_color="white", corner_radius=20,
+            width=100, height=35, font=("Arial", 12, "bold")
+        ).pack(side="left", padx=20, pady=10)
+        ctk.CTkButton(
+            sel, text="Cancelar", command=sel.destroy,
+            fg_color="#007BFF", hover_color="#339CFF",
+            text_color="white", corner_radius=20,
+            width=100, height=35, font=("Arial", 12, "bold")
+        ).pack(side="right", padx=20, pady=10)
 
-        # ─── Mostrar y esperar ─────────────────────────────────────────────────────────
         sel.grab_set()
         self._tk_root.wait_window(sel)
-
-        # Si cerró o pulsó Cancelar, salimos sin seguir
         if not accepted.get():
             return
 
-        tipo_paquete = tipo_paquete_var.get()
+        tipo_paquete = tipo_paquete_var.get().upper()
 
-        # 1) Definir encabezados que esperamos
+        # ─── 1) Encabezados esperados ──────────────────────────────────────────────────
         expected_headers = {
             "RADICADO", "NIT", "RAZON_SOCIAL", "FACTURA",
-            "VALOR_FACTURA", "FECHA RADICACION",
+            "VALOR_FACTURA", "FECHA_RADICACION",
             "ESTADO_FACTURA", "IMAGEN",
             "RADICADO_IMAGEN", "LINEA", "ID ASIGNACION",
             "ESTADO PYS", "OBSERVACION PYS", "LINEA PYS",
             "RANGOS", "Def"
         }
 
-        # 2) Seleccionar archivo
+        # ─── 2) Seleccionar archivo ────────────────────────────────────────────────────
         path = filedialog.askopenfilename(
             title="Selecciona el archivo de paquete",
             filetypes=[("Excel/CSV", "*.xlsx *.xls *.csv"), ("Todos", "*.*")]
@@ -4455,17 +4446,14 @@ class DashboardWindow(QtWidgets.QMainWindow):
         if not path:
             return
 
-        # 3) Leer con pandas
+        # ─── 3) Leer con pandas ───────────────────────────────────────────────────────
         try:
-            if path.lower().endswith(('.xls', '.xlsx')):
-                df = pd.read_excel(path)
-            else:
-                df = pd.read_csv(path)
+            df = pd.read_excel(path) if path.lower().endswith(('.xls', '.xlsx')) else pd.read_csv(path)
         except Exception:
             messagebox.showerror("Error lectura", "No se pudo leer el archivo. Verifica formato.")
             return
 
-        # 4) Validar encabezados
+        # ─── 4) Validar encabezados ───────────────────────────────────────────────────
         actual_headers = set(df.columns)
         missing = expected_headers - actual_headers
         extra   = actual_headers - expected_headers
@@ -4489,151 +4477,126 @@ class DashboardWindow(QtWidgets.QMainWindow):
             messagebox.showinfo("Sin datos", "El archivo está vacío.")
             return
 
-        # 5) Detectar RADICADOS ya existentes
+        # ─── 5) Detectar RADICADOS ya existentes ────────────────────────────────────────
         try:
             rad_list = df["RADICADO"].dropna().astype(int).unique().tolist()
         except Exception:
             messagebox.showerror(
                 "Error en RADICADO",
-                "No se pudieron convertir los valores de RADICADO a enteros.\n"
-                "Verifica que esa columna contenga sólo números."
+                "No se pudieron convertir los valores de RADICADO a enteros."
             )
             return
 
+        existentes = set()
         if rad_list:
             in_clause = ",".join(str(r) for r in rad_list)
             sql = f"SELECT RADICADO FROM ASIGNACION_TIPIFICACION WHERE RADICADO IN ({in_clause})"
             cur = self.conn.cursor()
             try:
                 cur.execute(sql)
-                existentes = sorted(r[0] for r in cur.fetchall())
+                existentes = {r[0] for r in cur.fetchall()}
             except Exception as e:
-                messagebox.showerror(
-                    "Error al verificar duplicados",
-                    f"No se pudo comprobar duplicados:\n\n{e}"
-                )
+                messagebox.showerror("Error al verificar duplicados", str(e))
                 cur.close()
                 return
             cur.close()
-
             if existentes:
                 messagebox.showerror(
                     "Radicados duplicados",
-                    "Los siguientes radicados ya existen:\n\n" +
-                    "\n".join(f"• {r}" for r in existentes)
+                    "Ya existen:\n" + "\n".join(f"• {r}" for r in sorted(existentes))
                 )
                 return
 
-        # 6) Calcular NUM_PAQUETE → tomo el mayor de TODOS los registros
+        # ─── 6) Calcular NUM_PAQUETE ────────────────────────────────────────────────────
         cur = self.conn.cursor()
         cur.execute(
-            "SELECT ISNULL(MAX(NUM_PAQUETE), 0) "
-            "FROM ASIGNACION_TIPIFICACION "
-            "WHERE TIPO_PAQUETE = %s",
+            "SELECT ISNULL(MAX(NUM_PAQUETE), 0) FROM ASIGNACION_TIPIFICACION WHERE TIPO_PAQUETE = %s",
             (tipo_paquete,)
         )
-        ultimo = cur.fetchone()[0]   # si no hay ninguno, devuelve 0
+        ultimo = cur.fetchone()[0]
         NUM_PAQUETE = ultimo + 1
-        cur.close()
-
-        # DEBUG opcional
         print(f"[DEBUG] Nuevo NUM_PAQUETE para {tipo_paquete} → {NUM_PAQUETE}")
 
-
-        # 7) Activar IDENTITY_INSERT
+        # ─── 7) Activar IDENTITY_INSERT ────────────────────────────────────────────────
         cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION ON;")
 
-        # 8) Crear barra de progreso
-        progress_window = ctk.CTkToplevel()
+        # ─── 8) Crear barra de progreso ────────────────────────────────────────────────
+        progress_window = ctk.CTkToplevel(self._tk_root)
         progress_window.title("Progreso de Carga")
         progress_window.geometry("400x150")
-        progress_label = ctk.CTkLabel(progress_window, text="Cargando registros...")
-        progress_label.pack(pady=10)
-        
+        ctk.CTkLabel(progress_window, text="Cargando registros...").pack(pady=10)
         progress_bar = ctk.CTkProgressBar(progress_window, orientation="horizontal", mode="determinate")
         progress_bar.pack(padx=20, pady=20, fill="x")
-
-        # Inicializar la barra de progreso en 0
         progress_bar.set(0)
-        
-        # 9) Preparamos la lista de parámetros
+
+        # ─── 9) Preparar parámetros (con truncamiento de strings) ────────────────────
         params_list = []
         for idx, row in df.iterrows():
             try:
-                # (mismos sanitizados que antes…)
                 radicado       = int(row["RADICADO"])
                 nit            = int(row["NIT"])
-                razon          = str(row["RAZON_SOCIAL"])
-                factura        = str(row["FACTURA"])
-                valor_factura  = int(row["VALOR_FACTURA"])
-                fecha_factura = None
-                if "FECHA FACTURA" in df.columns:
-                    v = row["FECHA FACTURA"]
-                    fecha_factura = None if pd.isna(v) else str(v)
-                num_doc = None
+                razon          = str(row["RAZON_SOCIAL"]).strip()[:255]
+                factura        = str(row["FACTURA"]).strip()[:30]
+                raw_vf         = row["VALOR_FACTURA"]
+                valor_factura  = int(raw_vf) if pd.notna(raw_vf) else 0
+                raw_fac        = row.get("FECHA_FACTURA")
+                if pd.isna(raw_fac): fecha_factura = None
+                elif isinstance(raw_fac, (pd.Timestamp, datetime.datetime)):
+                    fecha_factura = raw_fac.date()
+                else:
+                    fecha_factura = pd.to_datetime(raw_fac).date()
+                raw_rad = row["FECHA_RADICACION"]
+                if pd.isna(raw_rad): fecha_rad = None
+                elif isinstance(raw_rad, (pd.Timestamp, datetime.datetime)):
+                    fecha_rad = raw_rad.date()
+                else:
+                    fecha_rad = pd.to_datetime(raw_rad).date()
                 tipo_doc_id = None
                 if "TIPO DOC" in df.columns:
-                    v = row["TIPO DOC"]
-                    tipo_doc_id = None if pd.isna(v) else str(v)
-                num_doc = None
+                    v = row["TIPO DOC"]; tipo_doc_id = None if pd.isna(v) else str(v).strip()[:10]
+                num_doc=None
                 if "NUM DOC" in df.columns:
-                    v = row["NUM DOC"]
-                    num_doc = None if pd.isna(v) else int(v)
-                fecha_rad      = row["FECHA RADICACION"]
-                estado_factura = str(row.get("ESTADO_FACTURA","")).strip() or None
-                imagen         = str(row.get("IMAGEN","")).strip() or None
-
-                def s(col):
-                    v = row.get(col)
-                    return None if pd.isna(v) else str(v)
-                rad_img   = s("RADICADO_IMAGEN")
-                linea     = s("LINEA")
-                id_asig   = s("ID ASIGNACION")
-                est_pys   = s("ESTADO PYS")
-                obs_pys   = s("OBSERVACION PYS")
-                linea_pys = s("LINEA PYS")
-                rangos    = s("RANGOS")
-                def_col   = s("Def")
-
+                    v = row["NUM DOC"]; num_doc    = None if pd.isna(v) else int(v)
+                estado_factura = (str(row.get("ESTADO_FACTURA","")).strip() or None)[:255]
+                imagen         = (str(row.get("IMAGEN","")).strip() or None)[:2]
+                def s(col, length):
+                    v=row.get(col); return None if pd.isna(v) else str(v).strip()[:length]
+                rad_img   = s("RADICADO_IMAGEN", 255)
+                linea     = s("LINEA",           255)
+                id_asig   = s("ID ASIGNACION",   255)
+                est_pys   = s("ESTADO PYS",      255)
+                obs_pys   = s("OBSERVACION PYS", 255)
+                linea_pys = s("LINEA PYS",       255)
+                rangos    = s("RANGOS",          255)
+                def_col   = s("Def",             255)
                 params_list.append((
                     radicado, nit, razon, factura, valor_factura,
                     fecha_factura, fecha_rad, tipo_doc_id, num_doc,
-                    estado_factura, imagen,
-                    rad_img, linea, id_asig, est_pys,
-                    obs_pys, linea_pys, rangos, def_col,tipo_paquete,
-                    NUM_PAQUETE,
+                    estado_factura, imagen, rad_img, linea, id_asig,
+                    est_pys, obs_pys, linea_pys, rangos, def_col,
+                    tipo_paquete, NUM_PAQUETE
                 ))
             except Exception:
                 print(f"Error preparando fila {idx}:")
                 traceback.print_exc()
+            progress_bar.set(idx+1)
 
-            # Actualizar la barra de progreso
-            progress_bar.set(idx + 1)
-
-        # 10) Ejecutamos todos de golpe
+        # ─── 10) Ejecutar inserción masiva ──────────────────────────────────────────────
         cur.executemany(
             """
             INSERT INTO ASIGNACION_TIPIFICACION
-            (RADICADO, NIT, RAZON_SOCIAL, FACTURA, VALOR_FACTURA,
-            FECHA_FACTURA, FECHA_RADICACION, TIPO_DOC_ID,
-            NUM_DOC, ESTADO_FACTURA, IMAGEN, RADICADO_IMAGEN,
-            LINEA, ID_ASIGNACION, ESTADO_PYS, OBSERVACION_PYS,
-            LINEA_PYS, RANGOS, DEF, TIPO_PAQUETE, STATUS_ID, NUM_PAQUETE)
-            VALUES
-        (%s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, 1, %s)
-            """,
-            params_list
+            (...) VALUES
+            (%s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, 1, %s)
+            """, params_list
         )
         inserted = len(params_list)
 
-        # 11) Desactivar IDENTITY_INSERT y commit
+        # ─── 11) Finalizar y commit ────────────────────────────────────────────────────
         cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION OFF;")
         self.conn.commit()
         cur.close()
-
-        # Cerrar la ventana de progreso
         progress_window.destroy()
 
         messagebox.showinfo(
@@ -4641,9 +4604,11 @@ class DashboardWindow(QtWidgets.QMainWindow):
             f"Total filas: {total}\nInsertadas: {inserted}\nPaquete: {NUM_PAQUETE}"
         )
 
-        # 12) Selección de campos
-        sel = ctk.CTkToplevel()
-        sel.title(f"Paquete {NUM_PAQUETE}: Selecciona campos")
+        # ─── 12) Selección de campos para PAQUETE_CAMPOS ───────────────────────────────
+        sel2 = ctk.CTkToplevel(self._tk_root)
+        sel2.title(f"Paquete {NUM_PAQUETE}: Selecciona campos")
+        sel2.configure(fg_color="#2f2f2f")
+
         campos = [
             "FECHA_SERVICIO", "FECHA_FINAL", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO",
             "AUTORIZACION", "CODIGO_SERVICIO", "CANTIDAD", "VLR_UNITARIO",
@@ -4652,25 +4617,37 @@ class DashboardWindow(QtWidgets.QMainWindow):
         vars_chk = {}
         for campo in campos:
             vars_chk[campo] = tk.BooleanVar(value=True)
-            ctk.CTkCheckBox(sel, text=campo, variable=vars_chk[campo]).pack(
-                anchor="w", padx=20, pady=2
-            )
+            ctk.CTkCheckBox(
+                sel2, text=campo, variable=vars_chk[campo],
+                fg_color="#2f2f2f", text_color="white"
+            ).pack(anchor="w", padx=20, pady=2)
 
-        def guardar_campos(paquete=NUM_PAQUETE):
+        def guardar_campos():
             cur2 = self.conn.cursor()
             for campo, var in vars_chk.items():
                 if var.get():
                     cur2.execute(
-                        "INSERT INTO PAQUETE_CAMPOS (NUM_PAQUETE, campo) VALUES (%s, %s)",
-                        (paquete, campo)
+                        """
+                        INSERT INTO PAQUETE_CAMPOS
+                        (NUM_PAQUETE, campo, tipo_paquete)
+                        VALUES (%s, %s, %s)
+                        """, (NUM_PAQUETE, campo, tipo_paquete)
                     )
             self.conn.commit()
             cur2.close()
-            sel.destroy()
+            sel2.destroy()
             messagebox.showinfo("Guardado", f"Campos del paquete {NUM_PAQUETE} guardados.")
 
-        ctk.CTkButton(sel, text="Guardar", command=guardar_campos).pack(pady=10)
+        ctk.CTkButton(
+            sel2, text="Guardar", command=guardar_campos,
+            fg_color="#28A745", hover_color="#5CB85C",
+            text_color="white", corner_radius=20,
+            width=100, height=35, font=("Arial", 12, "bold")
+        ).pack(pady=20)
 
+        sel2.grab_set()
+        self._tk_root.wait_window(sel2)
+        
     def on_cargar_paquete(self):    
         self.cargar_paquete()
         pass
