@@ -262,9 +262,6 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     tipo_paquete = 'DIGITACION';
     cur.close()
 
-    
-    
-
     # 2) Asignación aleatoria
     cur = conn.cursor()
     cur.execute("""
@@ -904,25 +901,27 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     
         def remove_service_block():
             nonlocal dynamic_row, dynamic_col
+
+            # Solo eliminar si hay más de 1 (el inicial no se toca)
             if len(service_frames) <= 1:
                 return
 
-            # Sacamos el último bloque de frames y lo destruimos
+            # Eliminar el último bloque agregado dinámicamente
             last_frames = service_frames.pop()
             for f in last_frames:
                 f.destroy()
 
-            # También eliminamos sus datos de detail_vars
+            # Eliminar su conjunto de variables
             detail_vars.pop()
 
-            # Ajustamos dynamic_row/col para volver a esa posición
+            # Recalcular posición del grid (esto es opcional visualmente)
             cnt = len(last_frames)
             dynamic_col -= cnt
-            # si dinamyc_col queda <0, retrocedemos fila
             while dynamic_col < 0:
                 dynamic_row -= 1
                 dynamic_col += 3
 
+            # Si ya no hay más servicios adicionales, desactivar botón
             if len(service_frames) <= 1:
                 btn_del.configure(state='disabled')
 
@@ -1147,9 +1146,6 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
 
     bind_select_all(card)
-    def remove_service_block():
-        # se redefinirá más abajo si hay bloques dinámicos
-        pass
     # -----------------------------
     # Botonera
     # -----------------------------
@@ -2383,21 +2379,32 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         tiene_obs = False
         for dv in detail_vars:
             # Leer cada campo
-            auth   = dv.get('AUTORIZACION', {}).get('var').get().strip() or None
-            auth   = int(auth) if auth else None
+            auth_var = dv.get('AUTORIZACION', {}).get('var')
+            auth = auth_var.get().strip() if auth_var else None
+            auth = int(auth) if auth else None
 
-            cs     = dv.get('CODIGO_SERVICIO', {}).get('var').get().strip().upper() or None
-            qty    = dv.get('CANTIDAD', {}).get('var').get().strip() or None
-            qty    = int(qty) if qty else None
+           # CODIGO_SERVICIO
+            cs_var = dv.get('CODIGO_SERVICIO', {}).get('var')
+            cs = cs_var.get().strip().upper() if cs_var and cs_var.get().strip() else None
 
-            valor  = dv.get('VLR_UNITARIO', {}).get('var').get().strip() or None
-            valor  = float(valor) if valor else None
+            # CANTIDAD
+            qty_var = dv.get('CANTIDAD', {}).get('var')
+            qty_raw = qty_var.get().strip() if qty_var else None
+            qty = int(qty_raw) if qty_raw else None
 
-            copago = dv.get('COPAGO', {}).get('var').get().strip() or None
-            copago = float(copago) if copago else None
+            # VLR_UNITARIO
+            valor_var = dv.get('VLR_UNITARIO', {}).get('var')
+            valor_raw = valor_var.get().strip() if valor_var else None
+            valor = float(valor_raw) if valor_raw else None
 
+            # COPAGO
+            copago_var = dv.get('COPAGO', {}).get('var')
+            copago_raw = copago_var.get().strip() if copago_var else None
+            copago = float(copago_raw) if copago_raw else None
+
+            # OBSERVACION
             obs_var = dv.get('OBSERVACION', {}).get('var')
-            obs     = obs_var.get().strip() if obs_var and obs_var.get().strip() else None
+            obs = obs_var.get().strip() if obs_var and obs_var.get().strip() else None
             if obs:
                 tiene_obs = True
 
@@ -4373,280 +4380,195 @@ class DashboardWindow(QtWidgets.QMainWindow):
     # Métodos de acción (stubs; implementa tu lógica aquí)
     # ——————————————————————————————
     def cargar_paquete(self):
-        # —————————————————————————————————————————————
-        # Asegura un root de Tkinter para todos los CTkToplevel
-        # —————————————————————————————————————————————
+
+        # -----------------------------------------
+        # Asegura un root de Tkinter para los Toplevel
+        # -----------------------------------------
         if not hasattr(self, '_tk_root'):
             self._tk_root = tk.Tk()
             self._tk_root.withdraw()
 
-        # ─── 0) Selección de Tipo de Paquete ────────────────────────────────────────────
-        sel = ctk.CTkToplevel(self._tk_root)
-        sel.configure(fg_color="#2f2f2f")
-        sel.title("Seleccione Tipo de Paquete")
+        # 0) Selección de Tipo de Paquete
+        def elegir_tipo():
+            win = ctk.CTkToplevel(self._tk_root)
+            win.title("Seleccione Tipo de Paquete")
+            win.configure(fg_color="#2f2f2f")
+            tipo_var = tk.StringVar(master=self._tk_root, value="DIGITACION")
+            aceptado = tk.BooleanVar(master=self._tk_root, value=False)
+            ctk.CTkLabel(win, text="Tipo de Paquete:", text_color="white",
+                        fg_color="#2f2f2f", font=("Arial",14,"bold")).pack(pady=10)
+            ctk.CTkOptionMenu(win, values=["DIGITACION","CALIDAD"], variable=tipo_var,
+                            fg_color="#FFFFFF").pack(pady=5)
+            def ok():
+                aceptado.set(True)
+                win.destroy()
+            ctk.CTkButton(win, text="Aceptar", command=ok).pack(pady=10)
+            win.grab_set()
+            self._tk_root.wait_window(win)
+            return tipo_var.get().upper() if aceptado.get() else None
 
-        accepted = tk.BooleanVar(value=False)
-        tipo_paquete_var = tk.StringVar(value="DIGITACION")
-
-        ctk.CTkLabel(
-            sel, text="Tipo de Paquete:", text_color="white",
-            fg_color="#2f2f2f", font=("Arial", 14, "bold")
-        ).pack(pady=10)
-
-        ctk.CTkOptionMenu(
-            sel, values=["DIGITACION", "CALIDAD"],
-            variable=tipo_paquete_var,
-            fg_color="#FFFFFF", button_color="#F0F0F0",
-            button_hover_color="#E0E0E0",
-            dropdown_fg_color="#FFFFFF", dropdown_text_color="black",
-            dropdown_hover_color="#DDDDDD",
-            text_color="black", corner_radius=8,
-            font=("Arial", 12, "bold")
-        ).pack(pady=5)
-
-        def on_accept():
-            accepted.set(True)
-            sel.destroy()
-
-        ctk.CTkButton(
-            sel, text="Aceptar", command=on_accept,
-            fg_color="#007BFF", hover_color="#339CFF",
-            text_color="white", corner_radius=20,
-            width=100, height=35, font=("Arial", 12, "bold")
-        ).pack(side="left", padx=20, pady=10)
-        ctk.CTkButton(
-            sel, text="Cancelar", command=sel.destroy,
-            fg_color="#007BFF", hover_color="#339CFF",
-            text_color="white", corner_radius=20,
-            width=100, height=35, font=("Arial", 12, "bold")
-        ).pack(side="right", padx=20, pady=10)
-
-        sel.grab_set()
-        self._tk_root.wait_window(sel)
-        if not accepted.get():
+        tipo = elegir_tipo()
+        if not tipo:
             return
 
-        tipo_paquete = tipo_paquete_var.get().upper()
-
-        # ─── 1) Encabezados esperados ──────────────────────────────────────────────────
-        expected_headers = {
-            "RADICADO", "NIT", "RAZON_SOCIAL", "FACTURA",
-            "VALOR_FACTURA", "FECHA_RADICACION",
-            "ESTADO_FACTURA", "IMAGEN",
-            "RADICADO_IMAGEN", "LINEA", "ID ASIGNACION",
-            "ESTADO PYS", "OBSERVACION PYS", "LINEA PYS",
-            "RANGOS", "Def"
-        }
-
-        # ─── 2) Seleccionar archivo ────────────────────────────────────────────────────
+        # 1) Selección de archivo
         path = filedialog.askopenfilename(
-            title="Selecciona el archivo de paquete",
-            filetypes=[("Excel/CSV", "*.xlsx *.xls *.csv"), ("Todos", "*.*")]
+            title="Selecciona archivo de paquete",
+            filetypes=[("Excel/CSV", "*.xls* *.csv"), ("Todos", "*")]
         )
         if not path:
             return
 
-        # ─── 3) Leer con pandas ───────────────────────────────────────────────────────
+        # 2) Leer DataFrame
         try:
-            df = pd.read_excel(path) if path.lower().endswith(('.xls', '.xlsx')) else pd.read_csv(path)
+            df = (pd.read_excel(path) if path.lower().endswith(('xls','xlsx'))
+                else pd.read_csv(path))
         except Exception:
-            messagebox.showerror("Error lectura", "No se pudo leer el archivo. Verifica formato.")
-            return
+            return messagebox.showerror("Error lectura", "No se pudo leer el archivo.")
 
-        # ─── 4) Validar encabezados ───────────────────────────────────────────────────
-        actual_headers = set(df.columns)
-        missing = expected_headers - actual_headers
-        extra   = actual_headers - expected_headers
-        if missing or extra:
-            msg = []
-            if missing:
-                msg.append("Faltan columnas:\n  • " + "\n  • ".join(sorted(missing)))
-            if extra:
-                msg.append("Columnas inesperadas:\n  • " + "\n  • ".join(sorted(extra)))
-            messagebox.showerror(
-                "Encabezados incorrectos",
-                "El archivo no tiene la estructura esperada.\n\n"
-                "Esperados:\n  • " + "\n  • ".join(sorted(expected_headers)) +
-                "\n\nEncontrados:\n  • " + "\n  • ".join(sorted(actual_headers)) +
-                "\n\n" + "\n\n".join(msg)
-            )
-            return
+        # Normalize columns names
+        df.columns = [c.strip().upper().replace(" ","_") for c in df.columns]
+        required = {"RADICADO","NIT","RAZON_SOCIAL","FACTURA","VALOR_FACTURA",
+                    "FECHA_RADICACION","ESTADO_FACTURA","IMAGEN","RADICADO_IMAGEN",
+                    "LINEA","ID_ASIGNACION","ESTADO_PYS","OBSERVACION_PYS",
+                    "LINEA_PYS","RANGOS","DEF"}
+        faltan = required - set(df.columns)
+        if faltan:
+            return messagebox.showerror("Columnas faltantes", f"Faltan: {faltan}")
+        if df.empty:
+            return messagebox.showinfo("Sin datos","El archivo está vacío.")
 
-        total = len(df)
-        if total == 0:
-            messagebox.showinfo("Sin datos", "El archivo está vacío.")
-            return
-
-        # ─── 5) Detectar RADICADOS ya existentes ────────────────────────────────────────
-        try:
-            rad_list = df["RADICADO"].dropna().astype(int).unique().tolist()
-        except Exception:
-            messagebox.showerror(
-                "Error en RADICADO",
-                "No se pudieron convertir los valores de RADICADO a enteros."
-            )
-            return
-
-        existentes = set()
-        if rad_list:
-            in_clause = ",".join(str(r) for r in rad_list)
-            sql = f"SELECT RADICADO FROM ASIGNACION_TIPIFICACION WHERE RADICADO IN ({in_clause})"
-            cur = self.conn.cursor()
+        # 3) Utilidades de conversión
+        def safe_int(x, default=0):
             try:
-                cur.execute(sql)
-                existentes = {r[0] for r in cur.fetchall()}
-            except Exception as e:
-                messagebox.showerror("Error al verificar duplicados", str(e))
-                cur.close()
-                return
-            cur.close()
-            if existentes:
-                messagebox.showerror(
-                    "Radicados duplicados",
-                    "Ya existen:\n" + "\n".join(f"• {r}" for r in sorted(existentes))
-                )
-                return
+                return int(x)
+            except Exception:
+                return default
+        def safe_str(x, length):
+            return str(x).strip()[:length] if pd.notna(x) else None
+        def safe_date(x):
+            if pd.isna(x):
+                return None
+            if isinstance(x, (pd.Timestamp, datetime.date)):
+                return x.date() if hasattr(x,'date') else x
+            try:
+                return pd.to_datetime(x).date()
+            except Exception:
+                return None
 
-        # ─── 6) Calcular NUM_PAQUETE ────────────────────────────────────────────────────
+        # 4) Detectar duplicados
+        rad = [safe_int(v) for v in df['RADICADO'] if pd.notna(v)]
+        if rad:
+            placeholders = ','.join('%s' for _ in rad)
+            q = f"SELECT RADICADO FROM ASIGNACION_TIPIFICACION WHERE RADICADO IN ({placeholders})"
+            cur = self.conn.cursor()
+            cur.execute(q, rad)
+            exist = {r[0] for r in cur.fetchall()}
+            cur.close()
+            if exist:
+                return messagebox.showerror("Duplicados","Existen: %s" % exist)
+
+        # 5) Calcular NUM_PAQUETE
         cur = self.conn.cursor()
         cur.execute(
-            "SELECT ISNULL(MAX(NUM_PAQUETE), 0) FROM ASIGNACION_TIPIFICACION WHERE TIPO_PAQUETE = %s",
-            (tipo_paquete,)
+            "SELECT ISNULL(MAX(NUM_PAQUETE),0) FROM ASIGNACION_TIPIFICACION WHERE TIPO_PAQUETE=%s",
+            (tipo,)
         )
         ultimo = cur.fetchone()[0]
-        NUM_PAQUETE = ultimo + 1
-        print(f"[DEBUG] Nuevo NUM_PAQUETE para {tipo_paquete} → {NUM_PAQUETE}")
-
-        # ─── 7) Activar IDENTITY_INSERT ────────────────────────────────────────────────
-        cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION ON;")
-
-        # ─── 8) Crear barra de progreso ────────────────────────────────────────────────
-        progress_window = ctk.CTkToplevel(self._tk_root)
-        progress_window.title("Progreso de Carga")
-        progress_window.geometry("400x150")
-        ctk.CTkLabel(progress_window, text="Cargando registros...").pack(pady=10)
-        progress_bar = ctk.CTkProgressBar(progress_window, orientation="horizontal", mode="determinate")
-        progress_bar.pack(padx=20, pady=20, fill="x")
-        progress_bar.set(0)
-
-        # ─── 9) Preparar parámetros (con truncamiento de strings) ────────────────────
-        params_list = []
-        for idx, row in df.iterrows():
-            try:
-                radicado       = int(row["RADICADO"])
-                nit            = int(row["NIT"])
-                razon          = str(row["RAZON_SOCIAL"]).strip()[:255]
-                factura        = str(row["FACTURA"]).strip()[:30]
-                raw_vf         = row["VALOR_FACTURA"]
-                valor_factura  = int(raw_vf) if pd.notna(raw_vf) else 0
-                raw_fac        = row.get("FECHA_FACTURA")
-                if pd.isna(raw_fac): fecha_factura = None
-                elif isinstance(raw_fac, (pd.Timestamp, datetime.datetime)):
-                    fecha_factura = raw_fac.date()
-                else:
-                    fecha_factura = pd.to_datetime(raw_fac).date()
-                raw_rad = row["FECHA_RADICACION"]
-                if pd.isna(raw_rad): fecha_rad = None
-                elif isinstance(raw_rad, (pd.Timestamp, datetime.datetime)):
-                    fecha_rad = raw_rad.date()
-                else:
-                    fecha_rad = pd.to_datetime(raw_rad).date()
-                tipo_doc_id = None
-                if "TIPO DOC" in df.columns:
-                    v = row["TIPO DOC"]; tipo_doc_id = None if pd.isna(v) else str(v).strip()[:10]
-                num_doc=None
-                if "NUM DOC" in df.columns:
-                    v = row["NUM DOC"]; num_doc    = None if pd.isna(v) else int(v)
-                estado_factura = (str(row.get("ESTADO_FACTURA","")).strip() or None)[:255]
-                imagen         = (str(row.get("IMAGEN","")).strip() or None)[:2]
-                def s(col, length):
-                    v=row.get(col); return None if pd.isna(v) else str(v).strip()[:length]
-                rad_img   = s("RADICADO_IMAGEN", 255)
-                linea     = s("LINEA",           255)
-                id_asig   = s("ID ASIGNACION",   255)
-                est_pys   = s("ESTADO PYS",      255)
-                obs_pys   = s("OBSERVACION PYS", 255)
-                linea_pys = s("LINEA PYS",       255)
-                rangos    = s("RANGOS",          255)
-                def_col   = s("Def",             255)
-                params_list.append((
-                    radicado, nit, razon, factura, valor_factura,
-                    fecha_factura, fecha_rad, tipo_doc_id, num_doc,
-                    estado_factura, imagen, rad_img, linea, id_asig,
-                    est_pys, obs_pys, linea_pys, rangos, def_col,
-                    tipo_paquete, NUM_PAQUETE
-                ))
-            except Exception:
-                print(f"Error preparando fila {idx}:")
-                traceback.print_exc()
-            progress_bar.set(idx+1)
-
-        # ─── 10) Ejecutar inserción masiva ──────────────────────────────────────────────
-        cur.executemany(
-            """
-            INSERT INTO ASIGNACION_TIPIFICACION
-            (...) VALUES
-            (%s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, 1, %s)
-            """, params_list
-        )
-        inserted = len(params_list)
-
-        # ─── 11) Finalizar y commit ────────────────────────────────────────────────────
-        cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION OFF;")
-        self.conn.commit()
         cur.close()
-        progress_window.destroy()
+        num_paquete = ultimo + 1
 
-        messagebox.showinfo(
-            "Carga completa",
-            f"Total filas: {total}\nInsertadas: {inserted}\nPaquete: {NUM_PAQUETE}"
+        # 6) Construir filas de inserción
+        rows = []
+        for _,r in df.iterrows():
+            rows.append((
+                safe_int(r['RADICADO']),
+                safe_int(r['NIT']),
+                safe_str(r['RAZON_SOCIAL'],255),
+                safe_str(r['FACTURA'],30),
+                safe_int(r['VALOR_FACTURA'],0),
+                None,                  # FECHA_FACTURA
+                safe_date(r['FECHA_RADICACION']),
+                None,                  # TIPO_DOC_ID
+                safe_int(r.get('NUM_DOC'), None),
+                safe_str(r['ESTADO_FACTURA'],255),
+                safe_str(r['IMAGEN'],2),
+                safe_str(r['RADICADO_IMAGEN'],255),
+                safe_str(r['LINEA'],255),
+                safe_str(r['ID_ASIGNACION'],255),
+                safe_str(r['ESTADO_PYS'],255),
+                safe_str(r['OBSERVACION_PYS'],255),
+                safe_str(r['LINEA_PYS'],255),
+                safe_str(r['RANGOS'],255),
+                safe_str(r['DEF'],255),
+                tipo,
+                1,
+                num_paquete
+            ))
+
+        # 7) Insertar en BD
+        sql_insert = '''
+        INSERT INTO ASIGNACION_TIPIFICACION
+        (RADICADO,NIT,RAZON_SOCIAL,FACTURA,VALOR_FACTURA,
+        FECHA_FACTURA,FECHA_RADICACION,TIPO_DOC_ID,
+        NUM_DOC,ESTADO_FACTURA,IMAGEN,RADICADO_IMAGEN,
+        LINEA,ID_ASIGNACION,ESTADO_PYS,OBSERVACION_PYS,
+        LINEA_PYS,RANGOS,DEF,TIPO_PAQUETE,STATUS_ID,NUM_PAQUETE)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'''
+        cur = self.conn.cursor()
+        try:
+            try: cur.fast_executemany = True
+            except: pass
+            cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION ON;")
+            cur.executemany(sql_insert, rows)
+            cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION OFF;")
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            cur.close()
+            return messagebox.showerror("Error inserción", str(e))
+        cur.close()
+
+        # 8) Confirmar conteo
+        cur2 = self.conn.cursor()
+        cur2.execute(
+            "SELECT COUNT(*) FROM ASIGNACION_TIPIFICACION WHERE NUM_PAQUETE=%s AND TIPO_PAQUETE=%s",
+            (num_paquete, tipo)
         )
+        cnt = cur2.fetchone()[0]
+        cur2.close()
+        messagebox.showinfo("Carga completa",
+                            f"Paquete {num_paquete} ({tipo}) insertado. Filas: {cnt}")
 
-        # ─── 12) Selección de campos para PAQUETE_CAMPOS ───────────────────────────────
+        # 9) Selección de campos
         sel2 = ctk.CTkToplevel(self._tk_root)
-        sel2.title(f"Paquete {NUM_PAQUETE}: Selecciona campos")
-        sel2.configure(fg_color="#2f2f2f")
-
+        sel2.title(f"Paquete {num_paquete}: Campos")
         campos = [
-            "FECHA_SERVICIO", "FECHA_FINAL", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO",
-            "AUTORIZACION", "CODIGO_SERVICIO", "CANTIDAD", "VLR_UNITARIO",
-            "COPAGO", "OBSERVACION"
+            "FECHA_SERVICIO","FECHA_FINAL","TIPO_DOC_ID","NUM_DOC",
+            "DIAGNOSTICO","AUTORIZACION","CODIGO_SERVICIO",
+            "CANTIDAD","VLR_UNITARIO","COPAGO","OBSERVACION"
         ]
         vars_chk = {}
-        for campo in campos:
-            vars_chk[campo] = tk.BooleanVar(value=True)
-            ctk.CTkCheckBox(
-                sel2, text=campo, variable=vars_chk[campo],
-                fg_color="#2f2f2f", text_color="white"
-            ).pack(anchor="w", padx=20, pady=2)
-
+        for c in campos:
+            vars_chk[c] = tk.BooleanVar(master=self._tk_root, value=True)
+            ctk.CTkCheckBox(sel2, text=c, variable=vars_chk[c]).pack(anchor="w", padx=20)
         def guardar_campos():
-            cur2 = self.conn.cursor()
-            for campo, var in vars_chk.items():
-                if var.get():
-                    cur2.execute(
-                        """
-                        INSERT INTO PAQUETE_CAMPOS
-                        (NUM_PAQUETE, campo, tipo_paquete)
-                        VALUES (%s, %s, %s)
-                        """, (NUM_PAQUETE, campo, tipo_paquete)
-                    )
+            data = [(num_paquete,c,tipo) for c,v in vars_chk.items() if v.get()]
+            c2 = self.conn.cursor()
+            c2.executemany(
+                "INSERT INTO PAQUETE_CAMPOS (NUM_PAQUETE,campo,tipo_paquete) VALUES (%s,%s,%s)",
+                data
+            )
             self.conn.commit()
-            cur2.close()
+            c2.close()
             sel2.destroy()
-            messagebox.showinfo("Guardado", f"Campos del paquete {NUM_PAQUETE} guardados.")
-
-        ctk.CTkButton(
-            sel2, text="Guardar", command=guardar_campos,
-            fg_color="#28A745", hover_color="#5CB85C",
-            text_color="white", corner_radius=20,
-            width=100, height=35, font=("Arial", 12, "bold")
-        ).pack(pady=20)
-
+            messagebox.showinfo("Campos guardados", f"{len(data)} campos registrados.")
+        ctk.CTkButton(sel2, text="Guardar", command=guardar_campos).pack(pady=10)
         sel2.grab_set()
         self._tk_root.wait_window(sel2)
+
+
+
         
     def on_cargar_paquete(self):    
         self.cargar_paquete()
