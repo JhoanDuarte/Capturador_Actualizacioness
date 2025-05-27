@@ -211,6 +211,7 @@ class CodeAutocompleteEntry(AutocompleteEntry):
             # Asegurarnos de que Enter ejecute nuestra selección personalizada
             self._listbox.unbind('<Return>')
             self._listbox.bind('<Return>', self._on_listbox_select)
+            
 class FullMatchAutocompleteEntry(AutocompleteEntry):
     def _show_matches(self):
         txt = self.var.get().strip().lower()
@@ -244,6 +245,59 @@ class FullMatchAutocompleteEntry(AutocompleteEntry):
         w = self.winfo_width()
         h = min(100, len(matches) * 20)
         self._listbox_window.geometry(f"{w}x{h}+{x}+{y}")
+        
+class ScrollableFrame(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        # 1) Canvas + scrollbar
+        self.canvas = tk.Canvas(self, highlightthickness=0, bg=self.cget("fg_color"))
+        self.scrollbar = ctk.CTkScrollbar(self, orientation="vertical", command=self.canvas.yview)
+        self.scrollbar.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        # 2) Frame interior (donde pondrás tus campos)
+        self.scrollable_frame = ctk.CTkFrame(self.canvas, fg_color="transparent")
+        self._window = self.canvas.create_window((0,0),
+                                                 window=self.scrollable_frame,
+                                                 anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        # 3) Actualizar scrollregion al cambiar tamaño
+        self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(
+            scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfig(
+            self._window, width=e.width))
+
+    def scroll_to_widget(self, widget, margin=10):
+            c = self.canvas
+            f = self.scrollable_frame
+
+            # 1) Forzar recálculo de tamaños
+            c.update_idletasks()
+            f.update_idletasks()
+
+            total_h = f.winfo_height()
+            view_h  = c.winfo_height()
+            top_frac, top_pix = c.yview()[0], c.yview()[0] * total_h
+
+            # 2) Encontrar el "contenedor" directo en scrollable_frame
+            anc = widget
+            while anc.master and anc.master != f:
+                anc = anc.master
+            cont = anc  # este frame engloba etiqueta + entrada
+
+            # 3) Posición relativa y alto del contenedor
+            widget_y = cont.winfo_rooty() - f.winfo_rooty()
+            widget_h = cont.winfo_height()
+
+            # 4) Si está por encima → subir hasta dejarlo margin px debajo del top
+            if widget_y < top_pix + margin:
+                new_top = max(widget_y - margin, 0)
+                c.yview_moveto(new_top / float(total_h - view_h))
+
+            # 5) Si está por debajo → bajar hasta dejarlo margin px arriba del bottom
+            elif widget_y + widget_h > top_pix + view_h - margin:
+                new_top = min(widget_y + widget_h + margin - view_h,
+                            total_h - view_h)
+                c.yview_moveto(new_top / float(total_h - view_h))
         
 def iniciar_tipificacion(parent_root, conn, current_user_id):
     entry_radicado_var = tk.StringVar()
@@ -375,13 +429,13 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
 
     # 5) Scrollable y grid de 3 columnas
-    scroll = ctk.CTkScrollableFrame(card, fg_color='#2b2b2b')
+    scroll = ScrollableFrame(card, fg_color='#2b2b2b')
     scroll.pack(fill='both', expand=True, padx=20, pady=(10,0))
     card.pack_propagate(False) 
     card.grid_rowconfigure(1, weight=1)
     card.grid_columnconfigure(0, weight=1)
     for col in range(3):
-        scroll.grid_columnconfigure(col, weight=1, uniform="col")
+        scroll.scrollable_frame.grid_columnconfigure(col, weight=1, uniform="col")
 
     # 6) Variables de posición y contenedores
     fixed_row = 0
@@ -390,6 +444,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     widgets = {}
     detail_vars = []
     service_frames = []
+    
 
     def place_fixed_field(frame):
         nonlocal fixed_row, fixed_col
@@ -447,7 +502,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         w.bind('<FocusOut>', chk)
 
     def make_field(label_text, icon_url=None):
-        frame = ctk.CTkFrame(scroll, fg_color='transparent')
+        frame = ctk.CTkFrame(scroll.scrollable_frame, fg_color='transparent')
         if icon_url:
             ico = load_icon_from_url(icon_url, size=(20,20))
             ctk.CTkLabel(frame, image=ico, text='').pack(side='left', padx=(0,5))
@@ -512,6 +567,25 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             lbl_err_fecha.configure(text='Fecha inválida')
             return False
 
+    def apply_focus_style(widget, scroll):
+        # 1) detectamos el widget interno que realmente recibe el foco
+        #    para CTkEntry es widget._entry
+        real = getattr(widget, '_entry', widget)
+
+        def on_focus_in(e):
+            widget.configure(border_color='#3399FF', border_width=2)
+            scroll.scroll_to_widget(widget)
+
+        def on_focus_out(e):
+            widget.configure(border_color='#2b2b2b', border_width=1)
+
+        # 2) enlazamos los eventos al widget interno
+        real.bind('<FocusIn>', on_focus_in)
+        real.bind('<FocusOut>', on_focus_out)
+
+
+
+
     # ————— Bloque de creación del campo de fecha —————
 
     if 'FECHA_SERVICIO' in campos_paquete:
@@ -530,6 +604,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
         )
         entry_fecha.pack(fill='x', pady=(5, 0))
+        apply_focus_style(entry_fecha,scroll)
 
         # Selección completa en doble-click o focus
         entry_fecha.bind("<Double-Button-1>", select_all)
@@ -570,6 +645,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
         entry_tipo = AutocompleteEntry(frm, opts_td, width=300, textvariable=var_tipo)
         entry_tipo.pack(fill='x', pady=(5,0))
+        apply_focus_style(entry_tipo,scroll)
 
         # Forzar mayúsculas en KeyRelease
         def to_upper_on_key(event, var=var_tipo):
@@ -627,6 +703,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             validate='key', validatecommand=(win.register(lambda s: s.isdigit()), '%S')
         )
         entry_num.pack(fill='x', pady=(5,0))
+        apply_focus_style(entry_num,scroll)
 
         # Etiqueta de error
         lbl_err_num = ctk.CTkLabel(frm, text='', text_color='red')
@@ -674,6 +751,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             textvariable=var_diag
         )
         entry_diag.pack(fill='x', pady=(5,0))
+        apply_focus_style(entry_diag,scroll)
 
         # Etiqueta de error
         lbl_err_diag = ctk.CTkLabel(frm, text='', text_color='red')
@@ -777,6 +855,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
                     validatecommand=vcmd_auth
                 )
                 w.pack(fill='x', pady=(5, 0))
+                apply_focus_style(w,scroll)
                 lbl_err.pack(fill='x', pady=(2, 8))
 
                 def val_autorizacion(e=None, var=var, w=w, lbl=lbl_err):
@@ -818,6 +897,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
                     validate='key', validatecommand=vcmd_cs
                 )
                 w.pack(fill='x', pady=(5, 0))
+                apply_focus_style(w,scroll)
                 w.bind('<KeyRelease>', lambda e, v=var: v.set(v.get().upper()))
 
                 lbl_err_codigo = ctk.CTkLabel(frm, text='', text_color='red')
@@ -854,6 +934,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
                     validate='key', validatecommand=vcmd_num
                 )
                 w.pack(fill='x', pady=(5, 0))
+                apply_focus_style(w,scroll)
                 lbl_err.pack(fill='x', pady=(2, 8))
 
                 def make_val_general(var, w, lbl, campo):
@@ -878,6 +959,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
                     placeholder_text=default
                 )
                 w.pack(fill='x', pady=(5, 0))
+                apply_focus_style(w,scroll)
 
             # 4) Guardar referencia del campo
             dv[campo] = {'var': var, 'widget': w}
@@ -1085,21 +1167,32 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         tiene_obs = False
         for dv in detail_vars:
             # Leer cada campo
-            auth   = dv.get('AUTORIZACION', {}).get('var').get().strip() or None
-            auth   = int(auth) if auth else None
+            auth_var = dv.get('AUTORIZACION', {}).get('var')
+            auth = auth_var.get().strip() if auth_var else None
+            auth = int(auth) if auth else None
 
-            cs     = dv.get('CODIGO_SERVICIO', {}).get('var').get().strip().upper() or None
-            qty    = dv.get('CANTIDAD', {}).get('var').get().strip() or None
-            qty    = int(qty) if qty else None
+           # CODIGO_SERVICIO
+            cs_var = dv.get('CODIGO_SERVICIO', {}).get('var')
+            cs = cs_var.get().strip().upper() if cs_var and cs_var.get().strip() else None
 
-            valor  = dv.get('VLR_UNITARIO', {}).get('var').get().strip() or None
-            valor  = float(valor) if valor else None
+            # CANTIDAD
+            qty_var = dv.get('CANTIDAD', {}).get('var')
+            qty_raw = qty_var.get().strip() if qty_var else None
+            qty = int(qty_raw) if qty_raw else None
 
-            copago = dv.get('COPAGO', {}).get('var').get().strip() or None
-            copago = float(copago) if copago else None
+            # VLR_UNITARIO
+            valor_var = dv.get('VLR_UNITARIO', {}).get('var')
+            valor_raw = valor_var.get().strip() if valor_var else None
+            valor = float(valor_raw) if valor_raw else None
 
+            # COPAGO
+            copago_var = dv.get('COPAGO', {}).get('var')
+            copago_raw = copago_var.get().strip() if copago_var else None
+            copago = float(copago_raw) if copago_raw else None
+
+            # OBSERVACION
             obs_var = dv.get('OBSERVACION', {}).get('var')
-            obs     = obs_var.get().strip() if obs_var and obs_var.get().strip() else None
+            obs = obs_var.get().strip() if obs_var and obs_var.get().strip() else None
             if obs:
                 tiene_obs = True
 
@@ -1165,6 +1258,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         command=lambda: do_save(final=False)
     )
     btn_save.pack(side='left', expand=True, fill='x', padx=5)
+    apply_focus_style(btn_save,scroll)
 
     add_img = load_icon_from_url(
         "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/plus-circle.svg", size=(18,18)
@@ -1179,6 +1273,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         command=add_service_block
     )
     btn_add.pack(side='left', expand=True, fill='x', padx=5)
+    apply_focus_style(btn_add,scroll)
     
     del_img = load_icon_from_url(
         "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/trash-alt.svg",
@@ -1195,6 +1290,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         state='disabled'
     )
     btn_del.pack(side='left', expand=True, fill='x', padx=5)
+    apply_focus_style(btn_del,scroll)
 
     exit_img = load_icon_from_url(
         "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/sign-out-alt.svg", size=(18,18)
@@ -1209,6 +1305,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         command=lambda: do_save(final=True)
     )
     btn_exit.pack(side='left', expand=True, fill='x', padx=5)
+    apply_focus_style(btn_exit,scroll)
 
     # Bind Enter para cada botón
     for b in (btn_save, btn_add, btn_del, btn_exit):
@@ -1227,6 +1324,7 @@ def modificar_radicado(parent_root, conn, user_id):
     entry_factura_var  = tk.StringVar()
 
     var_fecha  = tk.StringVar()
+    var_fecha_final = tk.StringVar()
     var_tipo   = tk.StringVar()
     var_num    = tk.StringVar()
     var_diag   = tk.StringVar()
@@ -1238,6 +1336,7 @@ def modificar_radicado(parent_root, conn, user_id):
     var_obs    = tk.StringVar()
 
     field_vars = {}
+    detail_vars = []
 
     # Columnas numéricas para conversión
     numeric_main = {"TIPO_DOC_ID", "NUM_DOC"}
@@ -1254,56 +1353,6 @@ def modificar_radicado(parent_root, conn, user_id):
             widget.icursor(len(var.get()))
         return fmt
 
-    # Renderiza campos dinámicos
-    def _render_campos(campos_paquete):
-        for w in scroll.winfo_children(): w.destroy()
-        field_vars.clear()
-
-        cur = conn.cursor()
-        cur.execute("SELECT NAME FROM TIPO_DOC")
-        tipo_doc_opts = [r[0] for r in cur.fetchall()]
-        cur.execute("SELECT CODIGO, NOMBRE FROM TBL_CIE10")
-        diag_rows = cur.fetchall()
-        full_diag_opts = [f"{c} - {n}" for c, n in diag_rows]
-        cur.close()
-
-        DEFS = [
-            ("Fecha Servicio",   var_fecha, "FECHA_SERVICIO",  "date",         None),
-            ("Tipo Documento",   var_tipo,  "TIPO_DOC_ID",     "autocomplete", tipo_doc_opts),
-            ("Número Documento", var_num,   "NUM_DOC",         "int",          None),
-            ("Diagnóstico",      var_diag,  "DIAGNOSTICO",     "fullmatch",    full_diag_opts),
-            ("Autorización",     var_auth,  "AUTORIZACION",    "int9",         None),
-            ("Código Servicio",  var_cs,    "CODIGO_SERVICIO", "alnum",        None),
-            ("Cantidad",         var_qty,   "CANTIDAD",        "int3",         None),
-            ("Valor Unitario",   var_valor, "VLR_UNITARIO",    "int",          None),
-            ("Copago",           var_copago,"COPAGO",          "int",          None),
-            ("Observación",      var_obs,   "OBSERVACION",     "text",         None),
-        ]
-        r = c = 0
-        for label, var, key, ctype, opts in DEFS:
-            if key not in campos_paquete: continue
-            ctk.CTkLabel(scroll, text=label+":").grid(row=r, column=c, sticky="w", padx=5, pady=5)
-            if ctype == "autocomplete":
-                entry = AutocompleteEntry(scroll, opts, textvariable=var, width=250)
-                entry.grid(row=r, column=c+1, sticky="ew", padx=5)
-                var.trace_add("write", lambda *a, v=var: v.set(v.get().upper()))
-            elif ctype == "fullmatch":
-                entry = FullMatchAutocompleteEntry(scroll, full_diag_opts, textvariable=var, width=250)
-                entry.grid(row=r, column=c+1, sticky="ew", padx=5)
-                var.trace_add("write", lambda *a, v=var: v.set("".join(ch for ch in v.get().upper() if ch.isalnum() or ch in [' ','-'])))
-                var.trace_add("write", lambda *a, v=var: v.set(v.get().split(' - ')[0]) if v.get() in full_diag_opts else None)
-            elif ctype == "date":
-                ent = ctk.CTkEntry(scroll, textvariable=var, width=200, placeholder_text="DD/MM/AAAA")
-                ent.grid(row=r, column=c+1, sticky="ew", padx=5)
-                ent.bind("<KeyRelease>", _format_fecha_factory(var, ent))
-            else:
-                ent = ctk.CTkEntry(scroll, textvariable=var, width=200)
-                ent.grid(row=r, column=c+1, sticky="ew", padx=5)
-            field_vars[key] = var
-            c += 2
-            if c >= 6: c = 0; r += 1
-        ctk.CTkButton(win, text="Actualizar", command=_guardar).pack(pady=10)
-
     # Busca los datos y precarga el formulario
     def _buscar():
         rad_str = entry_radicado_var.get().strip()
@@ -1315,148 +1364,236 @@ def modificar_radicado(parent_root, conn, user_id):
         except ValueError:
             messagebox.showerror("Error", "El radicado debe ser un número.")
             return
+
         cur = conn.cursor()
+        # 1) Paquete y permisos (también traemos TIPO_PAQUETE)
         cur.execute("""
-            SELECT at.NUM_PAQUETE
+            SELECT at.NUM_PAQUETE, at.TIPO_PAQUETE
               FROM ASIGNACION_TIPIFICACION at
               JOIN TIPIFICACION t ON t.ASIGNACION_ID = at.RADICADO
              WHERE at.RADICADO = %s
-               AND t.USER_ID = %s
+               AND t.USER_ID  = %s
                AND at.STATUS_ID IN (3,4)
         """, (rad, user_id))
-        pkg = cur.fetchone()
-        if not pkg:
+        row = cur.fetchone()
+        if not row:
             messagebox.showerror("Error", "No autorizado o no existe.")
             cur.close()
             return
-        num_pkg = pkg[0]
+        num_pkg, tipo_pkg = row
+        is_calidad = (tipo_pkg or "").upper() == "CALIDAD"
+
+        # 2) Campos definidos para este paquete
         cur.execute("SELECT campo FROM PAQUETE_CAMPOS WHERE num_paquete=%s", (num_pkg,))
         campos = {r[0] for r in cur.fetchall()}
+
+        # 3) Cabecera de tipificación (incluye fecha_final)
         cur.execute("""
-            SELECT at.RADICADO, at.NIT, at.FACTURA,
-                   t.FECHA_SERVICIO,
-                   td_det.AUTORIZACION, td_det.CODIGO_SERVICIO, td_det.CANTIDAD,
-                   td_det.VLR_UNITARIO, td_det.COPAGO, td_det.OBSERVACION,
-                   td.NAME AS TIPO_DOC_NAME,
+            SELECT t.ID,
+                   at.RADICADO, at.NIT, at.FACTURA,
+                   t.FECHA_SERVICIO, t.FECHA_SERVICIO_FINAL,
+                   td.NAME         AS TIPO_DOC_NAME,
                    dx.CODIGO + ' - ' + dx.NOMBRE AS DIAG_NAME,
                    t.NUM_DOC
               FROM TIPIFICACION t
-         LEFT JOIN TIPIFICACION_DETALLES td_det ON td_det.TIPIFICACION_ID = t.ID
-         JOIN ASIGNACION_TIPIFICACION at ON at.RADICADO = t.ASIGNACION_ID
-         LEFT JOIN TIPO_DOC td ON td.ID = t.TIPO_DOC_ID
-         LEFT JOIN TBL_CIE10 dx ON dx.CODIGO = t.DIAGNOSTICO
-             WHERE t.ASIGNACION_ID = %s AND t.USER_ID = %s
+        JOIN ASIGNACION_TIPIFICACION at ON at.RADICADO = t.ASIGNACION_ID
+        LEFT JOIN TIPO_DOC td ON td.ID = t.TIPO_DOC_ID
+        LEFT JOIN TBL_CIE10 dx ON dx.CODIGO = t.DIAGNOSTICO
+             WHERE t.ASIGNACION_ID = %s
+               AND t.USER_ID       = %s
         """, (rad, user_id))
-        datos = cur.fetchone() or [None]*13
+        cab = cur.fetchone() or [None]*9
+        tipif_id = cab[0]
+
+        # 4) DETALLES: **todos** los servicios
+        cur.execute("""
+            SELECT ID, AUTORIZACION, CODIGO_SERVICIO, CANTIDAD,
+                   VLR_UNITARIO, COPAGO, OBSERVACION
+              FROM TIPIFICACION_DETALLES
+             WHERE TIPIFICACION_ID = %s
+        """, (tipif_id,))
+        detalles = cur.fetchall()
         cur.close()
-        entry_radicado_var.set(str(datos[0] or rad))
-        entry_nit_var.set(str(datos[1] or ""))
-        entry_factura_var.set(str(datos[2] or ""))
-        var_fecha.set(datos[3].strftime("%d/%m/%Y") if isinstance(datos[3], datetime.date) else "")
-        var_auth.set(str(datos[4] or ""))
-        var_cs.set(str(datos[5] or ""))
-        var_qty.set(str(datos[6] or ""))
-        var_valor.set(str(datos[7] or ""))
-        var_copago.set(str(datos[8] or ""))
-        var_obs.set(str(datos[9] or ""))
-        var_tipo.set(str(datos[10] or ""))
-        init_diag = str(datos[11] or "")
-        var_diag.set(init_diag.split(' - ')[0] if ' - ' in init_diag else init_diag)
-        var_num.set(str(datos[12] or ""))
-        _render_campos(campos)
 
-    # Guarda los cambios en TIPIFICACION y DETALLES
+        # 5) Cargo variables principales
+        entry_radicado_var.set(str(cab[1] or rad))
+        entry_nit_var.set(str(cab[2] or ""))
+        entry_factura_var.set(str(cab[3] or ""))
+        var_fecha.set(
+            cab[4].strftime("%d/%m/%Y") if isinstance(cab[4], datetime.date) else ""
+        )
+        if is_calidad:
+            var_fecha_final.set(
+                cab[5].strftime("%d/%m/%Y") if isinstance(cab[5], datetime.date) else ""
+            )
+        var_tipo.set(str(cab[6] or ""))
+        init_diag = str(cab[7] or "")
+        var_diag.set(init_diag.split(" - ")[0] if " - " in init_diag else init_diag)
+        var_num.set(str(cab[8] or ""))
+
+        # 6) Pinto los bloques de detalle y los campos dinámicos
+        _render_campos(campos, detalles, is_calidad)
+
+
+    def _render_campos(campos_paquete, detalles_list, is_calidad):
+        # limpio scroll y vars
+        for w in scroll.winfo_children():
+            w.destroy()
+        field_vars.clear()
+        detail_vars.clear()
+
+        # Opciones para autocompletes
+        cur = conn.cursor()
+        cur.execute("SELECT NAME FROM TIPO_DOC")
+        tipo_doc_opts = [r[0] for r in cur.fetchall()]
+        cur.execute("SELECT CODIGO, NOMBRE FROM TBL_CIE10")
+        full_diag_opts = [f"{c} - {n}" for c,n in cur.fetchall()]
+        cur.close()
+
+        # DEFINICIÓN de los campos fijos
+        MAIN_DEFS = [
+            ("Fecha Servicio",       var_fecha,        "FECHA_SERVICIO",       "date",         None),
+        ]
+        if is_calidad:
+            MAIN_DEFS.append(
+                ("Fecha Servicio Final", var_fecha_final,  "FECHA_SERVICIO_FINAL", "date", None)
+            )
+        MAIN_DEFS += [
+            ("Tipo Documento",       var_tipo,         "TIPO_DOC_ID",          "autocomplete", tipo_doc_opts),
+            ("Número Documento",     var_num,          "NUM_DOC",              "int",          None),
+            ("Diagnóstico",          var_diag,         "DIAGNOSTICO",          "fullmatch",    full_diag_opts),
+        ]
+
+        # DEFINICIÓN de los campos de detalle (uno por servicio)
+        DETAIL_DEFS = [
+            ("Autorización",    "AUTORIZACION",    "int9"),
+            ("Código Servicio", "CODIGO_SERVICIO", "alnum"),
+            ("Cantidad",        "CANTIDAD",        "int3"),
+            ("Valor Unitario",  "VLR_UNITARIO",    "int"),
+            ("Copago",          "COPAGO",          "int"),
+            ("Observación",     "OBSERVACION",     "text"),
+        ]
+
+        row = 0
+        # 1) Pinto los campos fijos
+        for label, var, key, ctype, opts in MAIN_DEFS:
+            if key not in campos_paquete:
+                continue
+            ctk.CTkLabel(scroll, text=label + ":").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+            if ctype == "autocomplete":
+                w = AutocompleteEntry(scroll, opts, textvariable=var, width=200)
+                w.grid(row=row, column=1, sticky="ew", padx=5)
+                var.trace_add("write", lambda *a, v=var: v.set(v.get().upper()))
+            elif ctype == "fullmatch":
+                w = FullMatchAutocompleteEntry(scroll, full_diag_opts, textvariable=var, width=200)
+                w.grid(row=row, column=1, sticky="ew", padx=5)
+                var.trace_add("write", lambda *a, v=var: v.set("".join(
+                    ch for ch in v.get().upper() if ch.isalnum() or ch in (" ", "-")
+                )))
+                var.trace_add("write", lambda *a, v=var: v.set(
+                    v.get().split(" - ")[0]
+                ) if v.get() in full_diag_opts else None)
+            elif ctype == "date":
+                w = ctk.CTkEntry(scroll, textvariable=var, width=200, placeholder_text="DD/MM/AAAA")
+                w.grid(row=row, column=1, sticky="ew", padx=5)
+                w.bind("<KeyRelease>", _format_fecha_factory(var, w))
+            else:
+                w = ctk.CTkEntry(scroll, textvariable=var, width=200)
+                w.grid(row=row, column=1, sticky="ew", padx=5)
+            field_vars[key] = var
+            row += 1
+
+        # 2) Pinto un bloque por cada detalle existente
+        for idx, detalle in enumerate(detalles_list, start=1):
+            detalle_id, *campos_detalle = detalle
+            ctk.CTkLabel(scroll, text=f"--- Servicio #{idx} ---",
+                         font=("Arial", 12, "bold"))\
+                .grid(row=row, column=0, columnspan=2, pady=(15,5), sticky="w")
+            row += 1
+
+            dv = {'ID': detalle_id}
+            for j, (label, key, ctype) in enumerate(DETAIL_DEFS):
+                if key not in campos_paquete:
+                    continue
+                value = campos_detalle[j]
+                var = tk.StringVar(value=str(value) if value is not None else "")
+                ctk.CTkLabel(scroll, text=label + ":").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+                ent = ctk.CTkEntry(scroll, textvariable=var, width=200)
+                ent.grid(row=row, column=1, sticky="ew", padx=5, pady=5)
+                dv[key] = var
+                row += 1
+
+            detail_vars.append(dv)
+
+        # 3) Botón de actualizar
+        ctk.CTkButton(win, text="Actualizar todo", command=_guardar).pack(pady=10)
+
+
     def _guardar():
-    # 1) Recolecta valores
-        updates = {k: v.get().strip() for k, v in field_vars.items()}
-        if not updates:
-            messagebox.showwarning("Advertencia", "No hay datos para actualizar.")
-            return
-
-        # 2) Valida radicado
-        try:
-            rad = int(entry_radicado_var.get())
-        except ValueError:
-            messagebox.showerror("Error", "Radicado inválido.")
-            return
-
-        # 3) Abre cursor
         cur = conn.cursor()
 
-        # 4) Resuelve ID de Tipo de Documento
+        # 1) Actualizo cada bloque de detalle por su ID
+        for dv in detail_vars:
+            det_id = dv.pop('ID')
+            set_parts, params = [], []
+            for k, var in dv.items():
+                set_parts.append(f"{k} = %s")
+                val = var.get().strip()
+                if k in numeric_det:
+                    try:    params.append(int(val))
+                    except: params.append(None)
+                else:
+                    params.append(val or None)
+            params.append(det_id)
+            cur.execute(
+                f"UPDATE TIPIFICACION_DETALLES SET {', '.join(set_parts)} WHERE ID = %s",
+                params
+            )
+
+        # 2) Recolecto valores principales
+        updates = {k: v.get().strip() for k, v in field_vars.items()}
+        # 3) Resuelvo IDs y validaciones
         tipo_name = updates.get('TIPO_DOC_ID')
         if tipo_name:
             cur.execute("SELECT ID FROM TIPO_DOC WHERE NAME = %s", (tipo_name,))
-            row = cur.fetchone()
-            updates['TIPO_DOC_ID'] = row[0] if row else None
+            r = cur.fetchone()
+            updates['TIPO_DOC_ID'] = r[0] if r else None
 
-        # 5) Valida código de Diagnóstico
         diag_code = updates.get('DIAGNOSTICO')
         if diag_code:
             cur.execute("SELECT CODIGO FROM TBL_CIE10 WHERE CODIGO = %s", (diag_code,))
             updates['DIAGNOSTICO'] = diag_code if cur.fetchone() else None
 
-        # 6) Separa columnas para cada tabla
-        main_cols    = {"FECHA_SERVICIO", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO"}
+        # 4) Actualizo TIPIFICACION
+        main_cols = {"FECHA_SERVICIO", "FECHA_SERVICIO_FINAL", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO"}
         main_updates = {k: updates[k] for k in updates if k in main_cols}
-        det_updates  = {k: updates[k] for k in updates if k not in main_cols}
-        
-        main_updates['modificado_por'] = user_id
-
-        # 7) Actualiza tabla TIPIFICACION
         if main_updates:
-            set_parts = []
-            params = []
+            set_parts, params = [], []
             for k, val in main_updates.items():
-                if k == "FECHA_SERVICIO":
-                    d = datetime.datetime.strptime(val, "%d/%m/%Y").date()
-                    set_parts.append(f"{k} = %s")
-                    params.append(d)
+                if k in ("FECHA_SERVICIO", "FECHA_SERVICIO_FINAL"):
+                    params.append(datetime.datetime.strptime(val, "%d/%m/%Y").date())
                 elif k in numeric_main:
-                    set_parts.append(f"{k} = %s")
-                    try:
-                        params.append(int(val))
-                    except (ValueError, TypeError):
-                        params.append(None)
+                    try:    params.append(int(val))
+                    except: params.append(None)
                 else:
-                    set_parts.append(f"{k} = %s")
-                    params.append(val)
-            params += [rad, user_id]
-            sql_main = (
-                "UPDATE TIPIFICACION "
-                f"SET {', '.join(set_parts)} "
-                "WHERE ASIGNACION_ID = %s AND USER_ID = %s"
-            )
-            cur.execute(sql_main, params)
-
-        # 8) Actualiza tabla TIPIFICACION_DETALLES
-        if det_updates:
-            set_parts = []
-            params = []
-            for k, val in det_updates.items():
+                    params.append(val or None)
                 set_parts.append(f"{k} = %s")
-                if k in numeric_det:
-                    try:
-                        params.append(int(val))
-                    except (ValueError, TypeError):
-                        params.append(None)
-                else:
-                    params.append(val)
+            # modificado_por
+            set_parts.append("modificado_por = %s")
+            params.append(user_id)
+            # filtro
+            rad = int(entry_radicado_var.get())
             params += [rad, user_id]
-            sql_det = (
-                "UPDATE td "
-                "SET " + ", ".join(set_parts) +
-                " FROM TIPIFICACION_DETALLES td"
-                " INNER JOIN TIPIFICACION t ON td.TIPIFICACION_ID = t.ID"
-                " WHERE t.ASIGNACION_ID = %s AND t.USER_ID = %s"
+            cur.execute(
+                f"UPDATE TIPIFICACION SET {', '.join(set_parts)} "
+                "WHERE ASIGNACION_ID = %s AND USER_ID = %s",
+                params
             )
-            cur.execute(sql_det, params)
 
-        # 9) Confirma y cierra
         conn.commit()
         cur.close()
         messagebox.showinfo("Éxito", "Radicado actualizado correctamente.")
-        win.destroy()  # cierra la ventana de actualización
+        win.destroy()
         parent_root.deiconify()
 
     # Construye la UI
@@ -1604,13 +1741,13 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
 
     # 5) Scrollable y grid de 3 columnas
-    scroll = ctk.CTkScrollableFrame(card, fg_color='#2b2b2b')
+    scroll = ScrollableFrame(card, fg_color='#2b2b2b')
     scroll.pack(fill='both', expand=True, padx=20, pady=(10,0))
     card.pack_propagate(False) 
     card.grid_rowconfigure(1, weight=1)
     card.grid_columnconfigure(0, weight=1)
     for col in range(3):
-        scroll.grid_columnconfigure(col, weight=1, uniform="col")
+        scroll.scrollable_frame.grid_columnconfigure(col, weight=1, uniform="col")
 
     # 6) Variables de posición y contenedores
     fixed_row = 0
@@ -1676,7 +1813,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         w.bind('<FocusOut>', chk)
 
     def make_field(label_text, icon_url=None):
-        frame = ctk.CTkFrame(scroll, fg_color='transparent')
+        frame = ctk.CTkFrame(scroll.scrollable_frame, fg_color='transparent')
         if icon_url:
             ico = load_icon_from_url(icon_url, size=(20,20))
             ctk.CTkLabel(frame, image=ico, text='').pack(side='left', padx=(0,5))
@@ -1741,6 +1878,22 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             lbl_err_fecha.configure(text='Fecha inválida')
             return False
 
+    def apply_focus_style(widget, scroll):
+        # 1) detectamos el widget interno que realmente recibe el foco
+        #    para CTkEntry es widget._entry
+        real = getattr(widget, '_entry', widget)
+
+        def on_focus_in(e):
+            widget.configure(border_color='#3399FF', border_width=2)
+            scroll.scroll_to_widget(widget)
+
+        def on_focus_out(e):
+            widget.configure(border_color='#2b2b2b', border_width=1)
+
+        # 2) enlazamos los eventos al widget interno
+        real.bind('<FocusIn>', on_focus_in)
+        real.bind('<FocusOut>', on_focus_out)
+
     # ————— Bloque de creación del campo de fecha —————
 
     if 'FECHA_SERVICIO' in campos_paquete:
@@ -1759,6 +1912,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
         )
         entry_fecha.pack(fill='x', pady=(5, 0))
+        apply_focus_style(entry_fecha,scroll)
 
         # Selección completa en doble-click o focus
         entry_fecha.bind("<Double-Button-1>", select_all)
@@ -1801,6 +1955,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
         )
         entry_fecha_final.pack(fill='x', pady=(5, 0))
+        apply_focus_style(entry_fecha_final,scroll)
 
         # Función de formateo para fecha final
         def format_fecha_final(event):
@@ -1870,6 +2025,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
         entry_tipo = AutocompleteEntry(frm, opts_td, width=300, textvariable=var_tipo)
         entry_tipo.pack(fill='x', pady=(5,0))
+        apply_focus_style(entry_tipo,scroll)
 
         # Forzar mayúsculas en KeyRelease
         def to_upper_on_key(event, var=var_tipo):
@@ -1925,6 +2081,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             validate='key', validatecommand=(win.register(lambda s: s.isdigit()), '%S')
         )
         entry_num.pack(fill='x', pady=(5,0))
+        apply_focus_style(entry_num,scroll)
 
         # Etiqueta de error
         lbl_err_num = ctk.CTkLabel(frm, text='', text_color='red')
@@ -1972,6 +2129,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             textvariable=var_diag
         )
         entry_diag.pack(fill='x', pady=(5,0))
+        apply_focus_style(entry_diag,scroll)
 
         # Etiqueta de error
         lbl_err_diag = ctk.CTkLabel(frm, text='', text_color='red')
@@ -2075,6 +2233,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                     validatecommand=vcmd_auth
                 )
                 w.pack(fill='x', pady=(5, 0))
+                apply_focus_style(w,scroll)
                 lbl_err.pack(fill='x', pady=(2, 8))
 
                 def val_autorizacion(e=None, var=var, w=w, lbl=lbl_err):
@@ -2108,6 +2267,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                     validate='key', validatecommand=vcmd_cs
                 )
                 w.pack(fill='x', pady=(5, 0))
+                apply_focus_style(w,scroll)
                 w.bind('<KeyRelease>', lambda e, v=var: v.set(v.get().upper()))
 
                 lbl_err_codigo = ctk.CTkLabel(frm, text='', text_color='red')
@@ -2144,6 +2304,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                     validate='key', validatecommand=vcmd_num
                 )
                 w.pack(fill='x', pady=(5, 0))
+                apply_focus_style(w,scroll)
                 lbl_err.pack(fill='x', pady=(2, 8))
 
                 def make_val_general(var, w, lbl, campo):
@@ -2168,6 +2329,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                     placeholder_text=default
                 )
                 w.pack(fill='x', pady=(5, 0))
+                apply_focus_style(w,scroll)
 
             # 4) Guardar referencia del campo
             dv[campo] = {'var': var, 'widget': w}
@@ -2474,6 +2636,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         command=lambda: do_save(final=False)
     )
     btn_save.pack(side='left', expand=True, fill='x', padx=5)
+    apply_focus_style(btn_save,scroll)
 
     add_img = load_icon_from_url(
         "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/plus-circle.svg", size=(18,18)
@@ -2488,6 +2651,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         command=add_service_block
     )
     btn_add.pack(side='left', expand=True, fill='x', padx=5)
+    apply_focus_style(btn_add,scroll)
     
     del_img = load_icon_from_url(
         "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/trash-alt.svg",
@@ -2504,6 +2668,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         state='disabled'
     )
     btn_del.pack(side='left', expand=True, fill='x', padx=5)
+    apply_focus_style(btn_del,scroll)
 
     exit_img = load_icon_from_url(
         "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/sign-out-alt.svg", size=(18,18)
@@ -2518,6 +2683,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         command=lambda: do_save(final=True)
     )
     btn_exit.pack(side='left', expand=True, fill='x', padx=5)
+    apply_focus_style(btn_exit,scroll)
 
     # Bind Enter para cada botón
     for b in (btn_save, btn_add, btn_del, btn_exit):
@@ -2813,33 +2979,46 @@ def ver_progreso(root, conn):
         if where is None:
             return
 
-        # — 1) SQL que incluye solo las columnas requeridas —
+        # Detectamos si es paquete CALIDAD
+        tipo = var_tipo_paquete.get().strip().upper()
+        is_calidad = (tipo == "CALIDAD")
+
+        # 1) Definimos dinámicamente las columnas a SELECT
+        select_cols = [
+            "a.RADICADO",
+            "t.FECHA_SERVICIO     AS FECHA_SERVICIO"
+        ]
+        if is_calidad:
+            select_cols.append(
+                "t.FECHA_SERVICIO_FINAL AS FECHA_SERVICIO_FINAL"
+            )
+        select_cols += [
+            "d.AUTORIZACION",
+            "d.CODIGO_SERVICIO",
+            "d.CANTIDAD",
+            "d.VLR_UNITARIO",
+            "t.DIAGNOSTICO",
+            "t.fecha_creacion      AS CreatedOn",
+            "CONCAT(u.FIRST_NAME, ' ', u.LAST_NAME, ' - ', CAST(u.NUM_DOC AS varchar(20))) AS ModifiedBy",
+            "COALESCE(td.NAME, '')  AS TipoDocumento",
+            "t.NUM_DOC              AS NumeroDocumento",
+            "d.COPAGO               AS CM_COPAGO",
+            "d.OBSERVACION",
+            "COALESCE(s.NAME, '')   AS ESTADO"
+        ]
+
         sql_export = (
-            "SELECT "
-            "  a.RADICADO, "
-            "  t.FECHA_SERVICIO, "
-            "  d.AUTORIZACION, "
-            "  d.CODIGO_SERVICIO, "
-            "  d.CANTIDAD, "
-            "  d.VLR_UNITARIO, "
-            "  t.DIAGNOSTICO, "
-            "  t.fecha_creacion    AS CreatedOn, "
-            " CONCAT(u.FIRST_NAME, ' ', u.LAST_NAME, ' - ', CAST(u.NUM_DOC AS varchar(20))) AS ModifiedBy, "
-            "  td.NAME           AS TipoDocumento, "
-            "  t.NUM_DOC           AS NumeroDocumento, "
-            "  d.COPAGO            AS CM_COPAGO, "
-            "  d.OBSERVACION, "
-            "  s.NAME              AS ESTADO "
+            "SELECT " + ", ".join(select_cols) + " "
             "FROM ASIGNACION_TIPIFICACION a "
-            "JOIN TIPIFICACION t          ON t.ASIGNACION_ID     = a.RADICADO "
-            "JOIN TIPO_DOC td          ON t.TIPO_DOC_ID     = td.ID "
-            "JOIN USERS u          ON t.USER_ID     = u.ID "
-            "JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID   = t.ID "
-            "JOIN STATUS s                ON s.ID                = a.STATUS_ID "
+            "JOIN TIPIFICACION t               ON t.ASIGNACION_ID          = a.RADICADO "
+            "LEFT JOIN TIPO_DOC td             ON t.TIPO_DOC_ID            = td.ID "
+            "LEFT JOIN USERS u                 ON t.USER_ID                = u.ID "
+            "LEFT JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID        = t.ID "
+            "LEFT JOIN STATUS s                ON s.ID                     = a.STATUS_ID "
             f"WHERE {where}"
         )
 
-        # — 2) Diálogo para elegir ruta y extensión —
+        # 2) Elegir ruta/extensión
         path = filedialog.asksaveasfilename(
             title="Guardar archivo",
             initialfile="reporte",
@@ -2855,16 +3034,16 @@ def ver_progreso(root, conn):
             return
         ext = path.rsplit('.', 1)[-1].lower()
 
-        # — 3) Ejecutar consulta una sola vez —
+        # 3) Ejecutar consulta
         cur = conn.cursor()
         cur.execute(sql_export, params)
         rows = cur.fetchall()
         headers = [col[0] for col in cur.description]
         cur.close()
 
-        # — 4) Rutas de exportación —
+        # 4) Exportar según extensión
         if ext in ("csv", "txt"):
-            sep = ',' if ext=="csv" else '\t'
+            sep = ',' if ext == "csv" else '\t'
             with open(path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f, delimiter=sep)
                 writer.writerow(headers)
@@ -2878,6 +3057,8 @@ def ver_progreso(root, conn):
         elif ext == "pdf":
             exportar_pdf(path, headers, rows)
             messagebox.showinfo("Exportar", f"{len(rows)} filas exportadas en PDF:\n{path}")
+
+
 
 
     def exportar_pdf(path, headers, rows):
@@ -4398,7 +4579,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             ctk.CTkLabel(win, text="Tipo de Paquete:", text_color="white",
                         fg_color="#2f2f2f", font=("Arial",14,"bold")).pack(pady=10)
             ctk.CTkOptionMenu(win, values=["DIGITACION","CALIDAD"], variable=tipo_var,
-                            fg_color="#FFFFFF").pack(pady=5)
+                            fg_color="#2f2f2f").pack(pady=5)
             def ok():
                 aceptado.set(True)
                 win.destroy()
