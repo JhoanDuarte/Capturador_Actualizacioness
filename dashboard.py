@@ -4607,9 +4607,11 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
         self.cmb_role = QtWidgets.QComboBox()
         self.cmb_role.setEditable(True)
+        self.cmb_role.setFixedWidth(220)  # espacio suficiente para el texto
         le = self.cmb_role.lineEdit()
         le.setAlignment(QtCore.Qt.AlignCenter)
         le.setReadOnly(True)
+        le.setTextMargins(10, 0, 24, 0)  # margen para compensar la flecha
 
         # Instalamos el filtro
         f = PopupOnClickFilter(self.cmb_role)
@@ -4985,8 +4987,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
         def elegir_tipo():
             win = ctk.CTkToplevel(self._tk_root)
             win.title("Seleccione Tipo de Paquete")
-            bg = "#2f2f2f" if theme == "dark" else "#f0f0f0"
-            fg = "white" if theme == "dark" else "black"
+            bg = "#ffffffcc" if theme == "dark" else "#000000cc"  # semitransparente
+            fg = "black" if theme == "dark" else "white"
             win.configure(fg_color=bg)
             tipo_var = tk.StringVar(master=self._tk_root, value="DIGITACION")
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
@@ -4994,10 +4996,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
                         fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
             opt_bg = "#000000" if theme == "light" else "#FFFFFF"
             opt_fg = "#FFFFFF" if theme == "light" else "#000000"
+
             ctk.CTkOptionMenu(
                 win,
                 values=["DIGITACION","CALIDAD"],
                 variable=tipo_var,
+
                 fg_color=opt_bg,
                 text_color=opt_fg,
                 button_color=opt_bg,
