@@ -524,14 +524,18 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
     def on_close():
         # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE ASIGNACION_TIPIFICACION 
-            SET STATUS_ID = 1 
-            WHERE RADICADO = %s
-        """, (radicado,))
-        conn.commit()
-        cur.close()
+        if radicado is not None:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE ASIGNACION_TIPIFICACION
+                SET STATUS_ID = 1
+                WHERE RADICADO = %s
+                """,
+                (radicado,),
+            )
+            conn.commit()
+            cur.close()
         win.destroy()  # Cierra la ventana después de actualizar el estado
 
     # Configurar el evento de cierre de la ventana
@@ -1864,14 +1868,18 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
     def on_close():
         # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE ASIGNACION_TIPIFICACION 
-            SET STATUS_ID = 1 
-            WHERE RADICADO = %s
-        """, (radicado,))
-        conn.commit()
-        cur.close()
+        if radicado is not None:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE ASIGNACION_TIPIFICACION
+                SET STATUS_ID = 1
+                WHERE RADICADO = %s
+                """,
+                (radicado,),
+            )
+            conn.commit()
+            cur.close()
         win.destroy()  # Cierra la ventana después de actualizar el estado
 
     # Configurar el evento de cierre de la ventana
@@ -4570,9 +4578,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # ——————————————————————————————
         self.lbl_saludo = QtWidgets.QLabel(f"Bienvenido, {first_name} {last_name}")
         self.lbl_saludo.setAlignment(QtCore.Qt.AlignCenter)
-        # Dejamos un color “por defecto neutral” aquí; lo ajustaremos en apply_theme
+        # Color inicial se ajustará luego en apply_theme
         self.lbl_saludo.setStyleSheet("""
-            color: #FFFFFF;              /* inicialmente blanco, asumiendo tema oscuro */
+            color: #FFFFFF;              /* placeholder, será reemplazado */
             font-size: 28px;
             font-weight: 600;
             background: transparent;
@@ -4754,17 +4762,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 """)
         if hasattr(self, "lbl_saludo"):
             if theme == "light":
-                # Texto blanco sobre fondo oscuro
+                # Texto negro sobre fondo claro
                 self.lbl_saludo.setStyleSheet("""
-                    color: #FFFFFF;
+                    color: #000000;
                     font-size: 28px;
                     font-weight: 600;
                     background: transparent;
                 """)
             else:
-                # Texto negro sobre fondo claro
+                # Texto blanco sobre fondo oscuro
                 self.lbl_saludo.setStyleSheet("""
-                    color: #000000;
+                    color: #FFFFFF;
                     font-size: 28px;
                     font-weight: 600;
                     background: transparent;
