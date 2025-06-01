@@ -69,6 +69,19 @@ def load_icon_from_url(url, size):
     return ctk.CTkImage(light_image=img, dark_image=img, size=size)
 
 
+def apply_ctk_theme_from_settings():
+    """Configura la apariencia de CustomTkinter según el tema guardado."""
+    settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+    theme = settings.value("theme", "dark")
+    if theme == "light":
+        ctk.set_appearance_mode("light")
+        ctk.set_default_color_theme("blue")
+    else:
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("dark-blue")
+    return theme
+
+
 class AutocompleteEntry(ctk.CTkEntry):
     def __init__(self, parent, values, textvariable=None, **kwargs):
         # Preparar StringVar (propio o el que pase el usuario)
@@ -3850,9 +3863,8 @@ if "--crear-usuario" in sys.argv:
     import re, bcrypt
     # aquí pones tu clase o función crear_usuario idéntica
     class AppTk:
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
         def __init__(self, conn):
+            apply_ctk_theme_from_settings()
             self.conn = conn
             self._tk_root = tk.Tk()
             self._tk_root.withdraw()
@@ -4075,9 +4087,8 @@ if "--crear-usuario" in sys.argv:
     
     
 if "--iniciar-tipificacion" in sys.argv:
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
+        # Configura tema según la preferencia guardada
+        apply_ctk_theme_from_settings()
         # 1) crea el root oculto
         root = tk.Tk()
         root.withdraw()
@@ -4102,9 +4113,8 @@ if "--iniciar-tipificacion" in sys.argv:
         sys.exit(0)
         
 if "--iniciar-calidad" in sys.argv:
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
+        # Configura tema según la preferencia guardada
+        apply_ctk_theme_from_settings()
         # 1) crea el root oculto
         root = tk.Tk()
         root.withdraw()
@@ -4129,9 +4139,8 @@ if "--iniciar-calidad" in sys.argv:
         sys.exit(0)
         
 if "--ver-progreso" in sys.argv:
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
+        # Configura tema según la preferencia guardada
+        apply_ctk_theme_from_settings()
         # 1) crea el root oculto
         root = tk.Tk()
         root.withdraw()
@@ -4152,9 +4161,8 @@ if "--ver-progreso" in sys.argv:
         sys.exit(0)
         
 if "--exportar-paquete" in sys.argv:
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
+        # Configura tema según la preferencia guardada
+        apply_ctk_theme_from_settings()
         # 1) crea el root oculto
         root = tk.Tk()
         root.withdraw()
@@ -4175,9 +4183,8 @@ if "--exportar-paquete" in sys.argv:
         sys.exit(0)
 
 if "--actualizar-datos" in sys.argv:
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
+        # Configura tema según la preferencia guardada
+        apply_ctk_theme_from_settings()
         # 1) crea el root oculto
         root = tk.Tk()
         root.withdraw()
@@ -4202,9 +4209,8 @@ if "--actualizar-datos" in sys.argv:
         sys.exit(0)
         
 if "--modificar-radicado" in sys.argv:
-    # Configura el tema
-    ctk.set_appearance_mode("light")
-    ctk.set_default_color_theme("blue")
+    # Configura el tema según la preferencia guardada
+    apply_ctk_theme_from_settings()
 
     # Crea el root (no lo ocultes)
     root = tk.Tk()
@@ -4231,9 +4237,8 @@ if "--modificar-radicado" in sys.argv:
 
         
 if "--desactivar-usuario" in sys.argv:
-        # configura tema (igual que en AppTk)
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
+        # Configura tema según la preferencia guardada
+        apply_ctk_theme_from_settings()
         # 1) crea el root oculto
         root = tk.Tk()
         root.withdraw()
@@ -4501,9 +4506,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
         self.center_on_screen()
 
-        # Después, inicializa CTk y el resto...
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
+        # Después, inicializa CTk y el resto según el tema guardado
+        apply_ctk_theme_from_settings()
 
         # Conexión a BD
         self.conn = conectar_sql_server("DB_DATABASE")
@@ -4702,7 +4706,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         from PyQt5.QtWidgets import QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect
         from PyQt5.QtGui import QPainter, QImage, QPalette, QBrush
         
-        bg_file = "FondoDashboardWhite.png" if theme == "dark" else "FondoDashboardDark.png"
+        bg_file = "FondoDashboardDark.png" if theme == "dark" else "FondoDashboardWhite.png"
         app = QtWidgets.QApplication.instance()
 
         # — Stylesheet para tema oscuro —
@@ -4820,7 +4824,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 self.panel.bg_blur = self.bg_blur_pix
                 self.panel.update()
         # Elige stylesheet e icono según el tema
-        if theme == "light":
+        if theme == "dark":
             app.setStyleSheet(dark_ss)
             self.theme_btn.setIcon(self.icon_moon)
             bg_file = "FondoDashboardDark.png"
@@ -4829,7 +4833,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             self.theme_btn.setIcon(self.icon_sun)
             bg_file = "FondoDashboardWhite.png"
             
-        if self.theme == "dark":
+        if theme == "dark":
             self.panel.set_overlay_color((255,255,255), alpha=155)
         else:
             self.panel.set_overlay_color((0,0,0), alpha=155)
@@ -4976,6 +4980,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # -----------------------------------------
         # Asegura un root de Tkinter para los Toplevel
         # -----------------------------------------
+        theme = apply_ctk_theme_from_settings()
         if not hasattr(self, '_tk_root'):
             self._tk_root = tk.Tk()
             self._tk_root.withdraw()
@@ -4984,13 +4989,15 @@ class DashboardWindow(QtWidgets.QMainWindow):
         def elegir_tipo():
             win = ctk.CTkToplevel(self._tk_root)
             win.title("Seleccione Tipo de Paquete")
-            win.configure(fg_color="#2f2f2f")
+            bg = "#2f2f2f" if theme == "dark" else "#f0f0f0"
+            fg = "white" if theme == "dark" else "black"
+            win.configure(fg_color=bg)
             tipo_var = tk.StringVar(master=self._tk_root, value="DIGITACION")
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
-            ctk.CTkLabel(win, text="Tipo de Paquete:", text_color="white",
-                        fg_color="#2f2f2f", font=("Arial",14,"bold")).pack(pady=10)
+            ctk.CTkLabel(win, text="Tipo de Paquete:", text_color=fg,
+                        fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
             ctk.CTkOptionMenu(win, values=["DIGITACION","CALIDAD"], variable=tipo_var,
-                            fg_color="#2f2f2f").pack(pady=5)
+                            fg_color=bg).pack(pady=5)
             def ok():
                 aceptado.set(True)
                 win.destroy()
