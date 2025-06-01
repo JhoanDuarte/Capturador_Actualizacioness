@@ -33,6 +33,7 @@ import customtkinter as ctk  # sólo esto para CustomTkinter
 from PIL import Image
 import pandas as pd
 import requests
+import math
 from tkcalendar import DateEntry
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, PageBreak, Paragraph
 from reportlab.lib.pagesizes import landscape, A4
@@ -2790,8 +2791,10 @@ def ver_progreso(root, conn):
         try:
             pkg = int(pkg_var.get())
         except ValueError:
-            messagebox.showwarning("Selección inválida", "Selecciona un paquete válido.")
-            return None, None
+            messagebox.showwarning(
+                "Selección inválida", "Selecciona un paquete válido."
+            )
+            return None, None, None, None
 
         filtros = ["a.NUM_PAQUETE = %s"]
         params = [pkg]
@@ -2836,7 +2839,7 @@ def ver_progreso(root, conn):
                 params.extend(lista)
 
         where_clause = " AND ".join(filtros)
-        return where_clause, tuple(params)
+        return where_clause, tuple(params), pkg, tipo
     
 
     # — Filtrar/mostrar solo checks de estado coincidentes —
@@ -2872,7 +2875,7 @@ def ver_progreso(root, conn):
 
     def actualizar_tabs():
         # 0) Reconstruye filtros y params
-        where, params = construir_filtros()
+        where, params, pkg_sel, tipo_sel = construir_filtros()
         if where is None:
             return
 
@@ -2917,6 +2920,24 @@ def ver_progreso(root, conn):
         ctk.CTkLabel(frame1, text="TOTAL", font=("Arial", 12, "bold")) \
             .grid(row=fila_final, column=0, sticky="w", padx=5, pady=4)
         ctk.CTkLabel(frame1, text=str(total_hechos), font=("Arial", 12, "bold")) \
+            .grid(row=fila_final, column=1, sticky="e", padx=5, pady=4)
+
+        # Conteo de registros sin asignar (STATUS_ID = 1)
+        cur_na = conn.cursor()
+        sql_na = "SELECT COUNT(*) FROM ASIGNACION_TIPIFICACION WHERE NUM_PAQUETE = %s"
+        params_na = [pkg_sel]
+        if tipo_sel:
+            sql_na += " AND TIPO_PAQUETE = %s"
+            params_na.append(tipo_sel)
+        sql_na += " AND STATUS_ID = 1"
+        cur_na.execute(sql_na, params_na)
+        sin_asignar = cur_na.fetchone()[0] or 0
+        cur_na.close()
+
+        fila_final += 1
+        ctk.CTkLabel(frame1, text="SIN ASIGNAR", font=("Arial", 12, "bold")) \
+            .grid(row=fila_final, column=0, sticky="w", padx=5, pady=4)
+        ctk.CTkLabel(frame1, text=str(sin_asignar), font=("Arial", 12, "bold")) \
             .grid(row=fila_final, column=1, sticky="e", padx=5, pady=4)
 
         # — Cálculo del intervalo promedio general entre tipificaciones —
@@ -3011,25 +3032,58 @@ def ver_progreso(root, conn):
             td_user = datetime.timedelta(seconds=int(avg_sec_user))
             processed.append((id_, usuario, pendientes, procesados, con_obs, hechos, str(td_user)))
 
-        # Encabezados con la columna de intervalo
         headers = ["ID", "USUARIO", "PENDIENTES", "PROCESADOS", "CON_OBS", "TOTAL", "INTERVALO"]
-        for j, h in enumerate(headers):
-            ctk.CTkLabel(frame2, text=h, font=("Arial", 12, "bold")) \
-                .grid(row=0, column=j, padx=5, pady=4, sticky="w")
-
-        # Datos por fila
-        for i, row in enumerate(processed, start=1):
-            for j, val in enumerate(row):
-                ctk.CTkLabel(frame2, text=str(val)) \
-                    .grid(row=i, column=j, padx=5, pady=2, sticky="w")
-
-        # Total general de HECHOS
+        rows_per_page = 10
         total_general = sum(r[5] for r in processed)
-        last_row = len(processed) + 1
-        ctk.CTkLabel(frame2, text="TOTAL GENERAL", font=("Arial", 12, "bold")) \
-            .grid(row=last_row, column=0, columnspan=6, sticky="e", padx=5, pady=6)
-        ctk.CTkLabel(frame2, text=str(total_general), font=("Arial", 12, "bold")) \
-            .grid(row=last_row, column=6, sticky="w", padx=5, pady=6)
+        total_pages = max(1, math.ceil(len(processed) / rows_per_page))
+
+        table_frame = ctk.CTkFrame(frame2, fg_color="transparent")
+        table_frame.pack(fill="both", expand=True)
+
+        nav_frame = ctk.CTkFrame(frame2, fg_color="transparent")
+        nav_frame.pack(pady=4)
+
+        page_var = tk.IntVar(value=0)
+
+        def render_page():
+            for w in table_frame.winfo_children():
+                w.destroy()
+            p = page_var.get()
+            start = p * rows_per_page
+            subset = processed[start : start + rows_per_page]
+            for j, h in enumerate(headers):
+                ctk.CTkLabel(table_frame, text=h, font=("Arial", 12, "bold"))\
+                    .grid(row=0, column=j, padx=5, pady=4, sticky="w")
+            for i, row in enumerate(subset, start=1):
+                for j, val in enumerate(row):
+                    ctk.CTkLabel(table_frame, text=str(val))\
+                        .grid(row=i, column=j, padx=5, pady=2, sticky="w")
+
+        def go_prev():
+            if page_var.get() > 0:
+                page_var.set(page_var.get() - 1)
+                render_page()
+                lbl_page.configure(text=f"{page_var.get()+1}/{total_pages}")
+
+        def go_next():
+            if page_var.get() < total_pages - 1:
+                page_var.set(page_var.get() + 1)
+                render_page()
+                lbl_page.configure(text=f"{page_var.get()+1}/{total_pages}")
+
+        btn_prev = ctk.CTkButton(nav_frame, text="<", width=30, command=go_prev)
+        btn_prev.pack(side="left", padx=5)
+        lbl_page = ctk.CTkLabel(nav_frame, text=f"1/{total_pages}")
+        lbl_page.pack(side="left", padx=5)
+        btn_next = ctk.CTkButton(nav_frame, text=">", width=30, command=go_next)
+        btn_next.pack(side="left", padx=5)
+
+        render_page()
+
+        ctk.CTkLabel(frame2, text="TOTAL GENERAL", font=("Arial", 12, "bold"))\
+            .pack(pady=(10,0))
+        ctk.CTkLabel(frame2, text=str(total_general), font=("Arial", 12, "bold"))\
+            .pack()
 
 
 
@@ -3076,7 +3130,7 @@ def ver_progreso(root, conn):
 
             
     def exportar():
-        where, params = construir_filtros()
+        where, params, _, _ = construir_filtros()
         if where is None:
             return
 
@@ -3087,25 +3141,20 @@ def ver_progreso(root, conn):
         # 1) Definimos dinámicamente las columnas a SELECT
         select_cols = [
             "a.RADICADO",
-            "t.FECHA_SERVICIO     AS FECHA_SERVICIO"
-        ]
-        if is_calidad:
-            select_cols.append(
-                "t.FECHA_SERVICIO_FINAL AS FECHA_SERVICIO_FINAL"
-            )
-        select_cols += [
+            "CONVERT(varchar(10), t.FECHA_SERVICIO, 103) AS FECHA_SERVICIO",
+            "CONVERT(varchar(10), t.FECHA_SERVICIO_FINAL, 103) AS FECHA_SERVICIO_FINAL",
             "d.AUTORIZACION",
             "d.CODIGO_SERVICIO",
             "d.CANTIDAD",
             "d.VLR_UNITARIO",
             "t.DIAGNOSTICO",
-            "t.fecha_creacion      AS CreatedOn",
-            "CONCAT(u.FIRST_NAME, ' ', u.LAST_NAME, ' - ', CAST(u.NUM_DOC AS varchar(20))) AS ModifiedBy",
             "COALESCE(td.NAME, '')  AS TipoDocumento",
             "t.NUM_DOC              AS NumeroDocumento",
             "d.COPAGO               AS CM_COPAGO",
             "d.OBSERVACION",
-            "COALESCE(s.NAME, '')   AS ESTADO"
+            "COALESCE(s.NAME, '')   AS ESTADO",
+            "t.fecha_creacion       AS FechaDigitacion",
+            "CONCAT(u.FIRST_NAME, ' ', u.LAST_NAME, ' - ', CAST(u.NUM_DOC AS varchar(20))) AS Funcionario"
         ]
 
         sql_export = (
@@ -3140,6 +3189,11 @@ def ver_progreso(root, conn):
         cur.execute(sql_export, params)
         rows = cur.fetchall()
         headers = [col[0] for col in cur.description]
+        rename_map = {
+            "FechaDigitacion": "FECHA DE DIGITACION",
+            "Funcionario": "FUNCIONARIO",
+        }
+        headers = [rename_map.get(h, h) for h in headers]
         cur.close()
 
         # 4) Exportar según extensión
@@ -3309,19 +3363,31 @@ def ver_progreso(root, conn):
         estado_vars[est] = var
         estado_checks[est] = cb
 
+    def _solo_visibles_est():
+        for var in estado_vars.values():
+            var.set(False)
+        for est in estados:
+            cb = estado_checks[est]
+            if cb.winfo_ismapped():
+                estado_vars[est].set(True)
+        actualizar_tabs()
+
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=120)\
+        .grid(row=9, column=0, columnspan=2, pady=(2,0))
+
     # Filtro de usuarios
     cur = conn.cursor()
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=9, column=0, sticky="w", pady=(10,5))
+    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=10, column=0, sticky="w", pady=(10,5))
     buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
-    buscar_usr.grid(row=9, column=1, sticky="w", padx=(0,10), pady=(10,5))
+    buscar_usr.grid(row=10, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=10, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=10, column=1, sticky="e")
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=11, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=11, column=1, sticky="e")
     user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    user_frame.grid(row=11, column=0, columnspan=2, sticky="w")
+    user_frame.grid(row=12, column=0, columnspan=2, sticky="w")
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -3332,9 +3398,9 @@ def ver_progreso(root, conn):
         user_checks[usr] = cb
         
      # — Filtro libre de Radicados —
-    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=12, column=0, sticky="nw", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=13, column=0, sticky="nw", pady=(10,0))
     rad_text = ctk.CTkTextbox(sidebar, width=200, height=100)
-    rad_text.grid(row=12, column=1, sticky="w", pady=(10,0))
+    rad_text.grid(row=13, column=1, sticky="w", pady=(10,0))
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
     # Pestañas de resultados
@@ -3652,21 +3718,25 @@ def exportar_paquete(root, conn):
             SELECT
               a.RADICADO                                   AS RADICADO,
               CONVERT(varchar(10), t.FECHA_SERVICIO, 103)  AS FECHA_SERVICIO,
+              CONVERT(varchar(10), t.FECHA_SERVICIO_FINAL, 103) AS FECHA_SERVICIO_FINAL,
               d.AUTORIZACION                               AS AUTORIZACION,
-              d.CODIGO_SERVICIO                            AS COD_SERVICIO,
+              d.CODIGO_SERVICIO                            AS CODIGO_SERVICIO,
               d.CANTIDAD                                   AS CANTIDAD,
               d.VLR_UNITARIO                               AS VLR_UNITARIO,
               t.DIAGNOSTICO                                AS DIAGNOSTICO,
-              t.fecha_creacion                             AS CreatedOn,
-              u2.NUM_DOC                                   AS ModifiedBy,
-              td.NAME                                      AS TipoDocumento,
+              COALESCE(td.NAME, '')                        AS TipoDocumento,
               t.NUM_DOC                                    AS NumeroDocumento,
-              d.COPAGO                                     AS CM_COPAGO
+              d.COPAGO                                     AS CM_COPAGO,
+              d.OBSERVACION                                AS OBSERVACION,
+              COALESCE(s.NAME, '')                         AS ESTADO,
+              t.fecha_creacion                             AS FechaDigitacion,
+              u2.NUM_DOC                                   AS Funcionario
             FROM ASIGNACION_TIPIFICACION a
-            JOIN TIPIFICACION t             ON t.ASIGNACION_ID        = a.RADICADO
-            JOIN TIPIFICACION_DETALLES d    ON d.TIPIFICACION_ID      = t.ID
-            JOIN USERS u2                   ON u2.ID                 = t.USER_ID
-            JOIN TIPO_DOC td                ON td.ID                 = t.TIPO_DOC_ID
+            JOIN TIPIFICACION t             ON t.ASIGNACION_ID = a.RADICADO
+            LEFT JOIN TIPIFICACION_DETALLES d    ON d.TIPIFICACION_ID = t.ID
+            LEFT JOIN USERS u2                   ON u2.ID            = t.USER_ID
+            LEFT JOIN TIPO_DOC td                ON td.ID            = t.TIPO_DOC_ID
+            LEFT JOIN STATUS s                   ON s.ID             = a.STATUS_ID
         """
 
         # 9) Elijo la cláusula WHERE según si hay radicados
@@ -3685,6 +3755,11 @@ def exportar_paquete(root, conn):
         cur2.execute(sql, params)
         rows = cur2.fetchall()
         headers = [col[0] for col in cur2.description]
+        rename_map = {
+            "FechaDigitacion": "FECHA DE DIGITACION",
+            "Funcionario": "FUNCIONARIO",
+        }
+        headers = [rename_map.get(h, h) for h in headers]
         cur2.close()
 
         with open(path, "w", newline="", encoding="utf-8") as f:
