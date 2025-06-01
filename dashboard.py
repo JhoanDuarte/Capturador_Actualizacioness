@@ -524,14 +524,18 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
     def on_close():
         # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE ASIGNACION_TIPIFICACION 
-            SET STATUS_ID = 1 
-            WHERE RADICADO = %s
-        """, (radicado,))
-        conn.commit()
-        cur.close()
+        if radicado is not None:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE ASIGNACION_TIPIFICACION
+                SET STATUS_ID = 1
+                WHERE RADICADO = %s
+                """,
+                (radicado,),
+            )
+            conn.commit()
+            cur.close()
         win.destroy()  # Cierra la ventana después de actualizar el estado
 
     # Configurar el evento de cierre de la ventana
@@ -1864,14 +1868,18 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
     def on_close():
         # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE ASIGNACION_TIPIFICACION 
-            SET STATUS_ID = 1 
-            WHERE RADICADO = %s
-        """, (radicado,))
-        conn.commit()
-        cur.close()
+        if radicado is not None:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE ASIGNACION_TIPIFICACION
+                SET STATUS_ID = 1
+                WHERE RADICADO = %s
+                """,
+                (radicado,),
+            )
+            conn.commit()
+            cur.close()
         win.destroy()  # Cierra la ventana después de actualizar el estado
 
     # Configurar el evento de cierre de la ventana
@@ -4570,9 +4578,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # ——————————————————————————————
         self.lbl_saludo = QtWidgets.QLabel(f"Bienvenido, {first_name} {last_name}")
         self.lbl_saludo.setAlignment(QtCore.Qt.AlignCenter)
-        # Dejamos un color “por defecto neutral” aquí; lo ajustaremos en apply_theme
+        # Color inicial se ajustará luego en apply_theme
         self.lbl_saludo.setStyleSheet("""
-            color: #FFFFFF;              /* inicialmente blanco, asumiendo tema oscuro */
+            color: #FFFFFF;              /* placeholder, será reemplazado */
             font-size: 28px;
             font-weight: 600;
             background: transparent;
@@ -4597,9 +4605,11 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
         self.cmb_role = QtWidgets.QComboBox()
         self.cmb_role.setEditable(True)
+        self.cmb_role.setFixedWidth(220)  # espacio suficiente para el texto
         le = self.cmb_role.lineEdit()
         le.setAlignment(QtCore.Qt.AlignCenter)
         le.setReadOnly(True)
+        le.setTextMargins(10, 0, 24, 0)  # margen para compensar la flecha
 
         # Instalamos el filtro
         f = PopupOnClickFilter(self.cmb_role)
@@ -4754,17 +4764,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 """)
         if hasattr(self, "lbl_saludo"):
             if theme == "light":
-                # Texto blanco sobre fondo oscuro
+                # Texto negro sobre fondo claro
                 self.lbl_saludo.setStyleSheet("""
-                    color: #FFFFFF;
+                    color: #000000;
                     font-size: 28px;
                     font-weight: 600;
                     background: transparent;
                 """)
             else:
-                # Texto negro sobre fondo claro
+                # Texto blanco sobre fondo oscuro
                 self.lbl_saludo.setStyleSheet("""
-                    color: #000000;
+                    color: #FFFFFF;
                     font-size: 28px;
                     font-weight: 600;
                     background: transparent;
@@ -4969,15 +4979,22 @@ class DashboardWindow(QtWidgets.QMainWindow):
         def elegir_tipo():
             win = ctk.CTkToplevel(self._tk_root)
             win.title("Seleccione Tipo de Paquete")
-            bg = "#2f2f2f" if theme == "dark" else "#f0f0f0"
-            fg = "white" if theme == "dark" else "black"
+            bg = "#ffffffcc" if theme == "dark" else "#000000cc"  # semitransparente
+            fg = "black" if theme == "dark" else "white"
             win.configure(fg_color=bg)
             tipo_var = tk.StringVar(master=self._tk_root, value="DIGITACION")
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
             ctk.CTkLabel(win, text="Tipo de Paquete:", text_color=fg,
                         fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
-            ctk.CTkOptionMenu(win, values=["DIGITACION","CALIDAD"], variable=tipo_var,
-                            fg_color=bg).pack(pady=5)
+            ctk.CTkOptionMenu(
+                win,
+                values=["DIGITACION","CALIDAD"],
+                variable=tipo_var,
+                fg_color=bg,
+                text_color=fg,
+                button_color=bg,
+                font=("Arial",14,"bold")
+            ).pack(pady=5)
             def ok():
                 aceptado.set(True)
                 win.destroy()
