@@ -5191,8 +5191,11 @@ class DashboardWindow(QtWidgets.QMainWindow):
         iniciar_calidad(self._tk_root, self.conn, self.user_id)
 
     def on_ver_progreso(self):
-        """Abre la ventana para ver el progreso acumulado"""
-        ver_progreso(self._tk_root, self.conn)
+        # Abrir la ventana de progreso directamente usando el mismo Tk root
+        if not hasattr(self, "_tk_root"):
+            import tkinter as tk
+            self._tk_root = tk.Tk()
+            self._tk_root.withdraw()
 
     def on_exportar_paquete(self):
         """Abre el diálogo para exportar paquetes"""
