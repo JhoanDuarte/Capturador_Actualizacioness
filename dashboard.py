@@ -3231,14 +3231,8 @@ def ver_progreso(root, conn):
     win.grab_set()
     win.protocol("WM_DELETE_WINDOW", lambda: safe_destroy(win))
 
-    mainfrm = ctk.CTkFrame(win, fg_color="transparent")
-    mainfrm.pack(expand=True, fill="both", padx=20, pady=20)
-
-    sidebar = ctk.CTkFrame(mainfrm, width=280)
-    sidebar.pack(side="left", fill="y", padx=(0, 20))
-
-    data_panel = ctk.CTkFrame(mainfrm, fg_color="transparent")
-    data_panel.pack(side="right", fill="both", expand=True)
+    topfrm = ctk.CTkFrame(win, fg_color="transparent")
+    topfrm.pack(fill="x", padx=20, pady=(20, 0))
 
     # Paquete
     cur = conn.cursor()
@@ -3246,12 +3240,8 @@ def ver_progreso(root, conn):
     paquetes = [str(r[0]) for r in cur.fetchall()] or ["0"]
     cur.close()
     pkg_var = tk.StringVar(value=paquetes[0])
-
-    filtros_top = ctk.CTkFrame(sidebar, fg_color="transparent")
-    filtros_top.pack(fill="x")
-
-    ctk.CTkLabel(filtros_top, text="Paquete:").grid(row=0, column=0, sticky="w")
-    ctk.CTkOptionMenu(filtros_top, values=paquetes, variable=pkg_var, width=120).grid(row=0, column=1, pady=2)
+    ctk.CTkLabel(topfrm, text="Paquete:").grid(row=0, column=0, sticky="w")
+    ctk.CTkOptionMenu(topfrm, values=paquetes, variable=pkg_var, width=80).grid(row=0, column=1, padx=(0,20), sticky="w")
 
     # Tipo de paquete
     cur = conn.cursor()
@@ -3259,48 +3249,52 @@ def ver_progreso(root, conn):
     tipos_paquete = [r[0] or "" for r in cur.fetchall()]
     cur.close()
     var_tipo_paquete = tk.StringVar(value=tipos_paquete[0])
-    ctk.CTkLabel(filtros_top, text="Tipo Paquete:").grid(row=1, column=0, sticky="w", pady=(5,0))
-    ctk.CTkOptionMenu(filtros_top, values=tipos_paquete, variable=var_tipo_paquete, width=120).grid(row=1, column=1, pady=(5,0))
+    ctk.CTkLabel(topfrm, text="Tipo Paquete:").grid(row=0, column=2, sticky="w")
+    ctk.CTkOptionMenu(topfrm, values=tipos_paquete, variable=var_tipo_paquete, width=80).grid(row=0, column=3, padx=(0,20), sticky="w")
 
     # Fechas
     var_fecha_desde = tk.StringVar()
+    
     var_fecha_hasta = tk.StringVar()
-
+    
     def limpiar_fechas():
+        # 1) Borra las variables para que construir_filtros ignore las fechas
         var_fecha_desde.set("")
         var_fecha_hasta.set("")
+        # 2) Borra el texto que queda en los DateEntry (usa su método delete)
         fecha_desde.delete(0, "end")
         fecha_hasta.delete(0, "end")
-
-    ctk.CTkLabel(filtros_top, text="Desde:").grid(row=2, column=0, sticky="w", pady=(5,0))
-    fecha_desde = DateEntry(filtros_top, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_desde)
-    fecha_desde.grid(row=2, column=1, pady=(5,0))
+    
+    ctk.CTkLabel(topfrm, text="Desde:").grid(row=0, column=4, sticky="w")
+    fecha_desde = DateEntry(topfrm, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_desde)
+    fecha_desde.grid(row=0, column=5, padx=(0,20), sticky="w")
     fecha_desde.delete(0, 'end')
-
-    ctk.CTkLabel(filtros_top, text="Hasta:").grid(row=3, column=0, sticky="w")
-    fecha_hasta = DateEntry(filtros_top, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_hasta)
-    fecha_hasta.grid(row=3, column=1, pady=2)
+    
+    ctk.CTkLabel(topfrm, text="Hasta:").grid(row=0, column=6, sticky="w")
+    fecha_hasta = DateEntry(topfrm, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_hasta)
+    fecha_hasta.grid(row=0, column=7, padx=(0,20), sticky="w")
     fecha_hasta.delete(0, 'end')
 
-    ctk.CTkButton(filtros_top, text="Limpiar fechas", command=limpiar_fechas, width=120).grid(row=4, column=0, columnspan=2, pady=(10,2))
-    ctk.CTkButton(filtros_top, text="Aplicar filtros", command=actualizar_tabs, width=120).grid(row=5, column=0, columnspan=2, pady=2)
-    ctk.CTkButton(filtros_top, text="Exportar", command=exportar, width=120).grid(row=6, column=0, columnspan=2, pady=(2,10))
-
+    ctk.CTkButton(topfrm, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=0, column=8, padx=(0,20))
+    ctk.CTkButton(topfrm, text="Aplicar filtros", command=actualizar_tabs, width=120).grid(row=0, column=9, padx=(0,20))
+    ctk.CTkButton(topfrm,
+        text="Exportar",
+        command=exportar,
+        width=100
+    ).grid(row=0, column=10)
     # Filtro de estados
     cur = conn.cursor()
     cur.execute("SELECT NAME FROM STATUS ORDER BY NAME")
     estados = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Estado:").pack(anchor="w", pady=(10,0))
-    buscar_est = ctk.CTkEntry(sidebar, width=200, placeholder_text="Buscar estado...")
-    buscar_est.pack(fill="x")
+    ctk.CTkLabel(topfrm, text="Estado:").grid(row=1, column=0, sticky="w", pady=(20,5))
+    buscar_est = ctk.CTkEntry(topfrm, width=200, placeholder_text="Buscar estado...")
+    buscar_est.grid(row=1, column=1, columnspan=3, sticky="w", padx=(0,20), pady=(20,5))
     buscar_est.bind("<KeyRelease>", _filtrar_est)
-    btns_est = ctk.CTkFrame(sidebar, fg_color="transparent")
-    btns_est.pack(fill="x", pady=2)
-    ctk.CTkButton(btns_est, text="Todo", command=lambda: _marcar_est(True), width=60).pack(side="left", padx=2)
-    ctk.CTkButton(btns_est, text="Ninguno", command=lambda: _marcar_est(False), width=60).pack(side="left", padx=2)
-    estado_frame = ctk.CTkScrollableFrame(sidebar, width=250, height=120)
-    estado_frame.pack(fill="x", pady=(2,10))
+    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=1, column=4, pady=(20,5), sticky="w")
+    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=1, column=5, pady=(20,5), sticky="w")
+    estado_frame = ctk.CTkScrollableFrame(topfrm, width=250, height=120)
+    estado_frame.grid(row=2, column=0, columnspan=6, sticky="w")
     estado_vars = {}
     estado_checks = {}
     for est in estados:
@@ -3315,16 +3309,14 @@ def ver_progreso(root, conn):
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Usuario:").pack(anchor="w", pady=(10,0))
-    buscar_usr = ctk.CTkEntry(sidebar, width=200, placeholder_text="Buscar usuario...")
-    buscar_usr.pack(fill="x")
+    ctk.CTkLabel(topfrm, text="Usuario:").grid(row=1, column=6, sticky="w", pady=(20,5), padx=(20,0))
+    buscar_usr = ctk.CTkEntry(topfrm, width=200, placeholder_text="Buscar usuario...")
+    buscar_usr.grid(row=1, column=7, columnspan=2, sticky="w", pady=(20,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    btns_usr = ctk.CTkFrame(sidebar, fg_color="transparent")
-    btns_usr.pack(fill="x", pady=2)
-    ctk.CTkButton(btns_usr, text="Todo", command=lambda: _marcar_usr(True), width=60).pack(side="left", padx=2)
-    ctk.CTkButton(btns_usr, text="Ninguno", command=lambda: _marcar_usr(False), width=60).pack(side="left", padx=2)
-    user_frame = ctk.CTkScrollableFrame(sidebar, width=250, height=120)
-    user_frame.pack(fill="x")
+    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=1, column=9, pady=(20,5), sticky="w", padx=(5,0))
+    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=1, column=10, pady=(20,5), sticky="w", padx=(5,0))
+    user_frame = ctk.CTkScrollableFrame(topfrm, width=250, height=120)
+    user_frame.grid(row=2, column=6, columnspan=5, sticky="w")
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -3347,8 +3339,8 @@ def ver_progreso(root, conn):
         width=120
     ).grid(row=3, column=4, padx=(20,0), pady=(10,0), sticky="w")
     # Pestañas de resultados
-    tabs = ctk.CTkTabview(data_panel, width=760, height=440)
-    tabs.pack(expand=True, fill="both")
+    tabs = ctk.CTkTabview(win, width=760, height=440)
+    tabs.pack(padx=20, pady=(10,20), fill="both", expand=True)
     tabs.add("Por Estado")
     tabs.add("Por Usuario")
     win._tabview = tabs
@@ -5182,36 +5174,81 @@ class DashboardWindow(QtWidgets.QMainWindow):
         subprocess.Popen([sys.executable, script, "--crear-usuario"])
 
     def on_iniciar_digitacion(self):
-
-        """Lanza la ventana de digitación dentro del mismo proceso"""
-        iniciar_tipificacion(self._tk_root, self.conn, self.user_id)
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--iniciar-tipificacion",
+            str(self.user_id)          # <–– Aquí debe ir el user_id
+        ])
+        pass
 
     def on_iniciar_calidad(self):
-        """Lanza la ventana de control de calidad directamente"""
-        iniciar_calidad(self._tk_root, self.conn, self.user_id)
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--iniciar-calidad",
+            str(self.user_id)          # <–– Aquí debe ir el user_id
+        ])
+        pass
 
     def on_ver_progreso(self):
-        # Abrir la ventana de progreso directamente usando el mismo Tk root
-        if not hasattr(self, "_tk_root"):
-            import tkinter as tk
-            self._tk_root = tk.Tk()
-            self._tk_root.withdraw()
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--ver-progreso",
+            str(self)          # <–– Aquí debe ir el user_id
+        ])
+        pass
 
     def on_exportar_paquete(self):
-        """Abre el diálogo para exportar paquetes"""
-        exportar_paquete(self._tk_root, self.conn)
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--exportar-paquete",
+            str(self.user_id)          # <–– Aquí debe ir el user_id
+        ])
+        pass
 
     def on_actualizar_datos(self):
-        """Abre la ventana para actualizar datos del usuario"""
-        actualizar_usuario(self._tk_root, self.conn, self.user_id)
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--actualizar-datos",
+            str(self.user_id)          # <–– Aquí debe ir el user_id
+        ])
+        pass
 
     def on_modificar_estado_usuario(self):
-        """Permite modificar el estado de usuarios"""
-        modificar_estado_usuario(self._tk_root, self.conn)
-
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--desactivar-usuario",
+            str(self.user_id)          # <–– Aquí debe ir el user_id
+        ])
+        pass
+    
     def on_modificar_radicado(self):
-        """Muestra la interfaz para modificar radicados""" 
-        modificar_radicado(self._tk_root, self.conn, self.user_id)
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--modificar-radicado",
+            str(self.user_id)          # <–– Aquí debe ir el user_id
+        ])
+        pass
 
 
 if __name__ == "__main__":
