@@ -42,6 +42,7 @@ from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 import traceback
 from PIL import Image, ImageDraw, ImageTk
+from threading import Thread
 
 # — Módulos propios —
 from db_connection import conectar_sql_server
@@ -58,15 +59,64 @@ def safe_destroy(win):
         pass
     win.destroy()
 
+ICON_CACHE = {}
+
 def load_icon_from_url(url, size):
-    resp = requests.get(url)
-    resp.raise_for_status()
-    # convierte SVG bytes a PNG bytes
-    png_bytes = cairosvg.svg2png(bytestring=resp.content,
-                                 output_width=size[0],
-                                 output_height=size[1])
-    img = Image.open(BytesIO(png_bytes))
-    return ctk.CTkImage(light_image=img, dark_image=img, size=size)
+    """Descarga un ícono SVG y lo convierte a CTkImage usando caché."""
+    key = (url, size)
+    if key in ICON_CACHE:
+        return ICON_CACHE[key]
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        png_bytes = cairosvg.svg2png(bytestring=resp.content,
+                                     output_width=size[0],
+                                     output_height=size[1])
+        img = Image.open(BytesIO(png_bytes))
+    except Exception:
+        img = Image.new("RGBA", size, (0, 0, 0, 0))
+    icon = ctk.CTkImage(light_image=img, dark_image=img, size=size)
+    ICON_CACHE[key] = icon
+    return icon
+
+
+def prefetch_icons(urls, size=(18, 18)):
+    """Pre-carga íconos en un hilo para acelerar la apertura de ventanas."""
+    def _worker():
+        for u in urls:
+            key = (u, size)
+            if key not in ICON_CACHE:
+                try:
+                    load_icon_from_url(u, size)
+                except Exception:
+                    ICON_CACHE[key] = ctk.CTkImage(
+                        light_image=Image.new("RGBA", size, (0, 0, 0, 0)),
+                        dark_image=Image.new("RGBA", size, (0, 0, 0, 0)),
+                        size=size,
+                    )
+    Thread(target=_worker, daemon=True).start()
+
+# Lista de íconos usados con frecuencia en la aplicación
+COMMON_ICONS = [
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/save.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/plus-circle.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/trash-alt.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/sign-out-alt.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/user-circle.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/calendar.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/id-card.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/hashtag.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/stethoscope.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/file-invoice.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/tools.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/list-ol.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/dollar-sign.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/coins.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/align-left.svg",
+]
+
+# Prefetch en un hilo para que las ventanas abran más rápido
+prefetch_icons(COMMON_ICONS)
 
 
 def apply_ctk_theme_from_settings():
@@ -524,14 +574,18 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
     def on_close():
         # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE ASIGNACION_TIPIFICACION 
-            SET STATUS_ID = 1 
-            WHERE RADICADO = %s
-        """, (radicado,))
-        conn.commit()
-        cur.close()
+        if radicado is not None:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE ASIGNACION_TIPIFICACION
+                SET STATUS_ID = 1
+                WHERE RADICADO = %s
+                """,
+                (radicado,),
+            )
+            conn.commit()
+            cur.close()
         win.destroy()  # Cierra la ventana después de actualizar el estado
 
     # Configurar el evento de cierre de la ventana
@@ -578,7 +632,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             frame,
             text=label_text,
             anchor='w',
-            text_color=fg_text_color    # <–– cada Label hereda el color dinámico
+            text_color=fg_text_color,   # <–– cada Label hereda el color dinámico
+            font=ctk.CTkFont(weight='bold')
         ).pack(fill='x')
         return frame
 
@@ -1530,7 +1585,11 @@ def modificar_radicado(parent_root, conn, user_id):
         for label, var, key, ctype, opts in MAIN_DEFS:
             if key not in campos_paquete:
                 continue
-            ctk.CTkLabel(scroll, text=label + ":").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+            ctk.CTkLabel(
+                scroll,
+                text=label + ":",
+                font=ctk.CTkFont(weight="bold")
+            ).grid(row=row, column=0, sticky="w", padx=5, pady=5)
             if ctype == "autocomplete":
                 w = AutocompleteEntry(scroll, opts, textvariable=var, width=200)
                 w.grid(row=row, column=1, sticky="ew", padx=5)
@@ -1568,7 +1627,8 @@ def modificar_radicado(parent_root, conn, user_id):
                     continue
                 value = campos_detalle[j]
                 var = tk.StringVar(value=str(value) if value is not None else "")
-                ctk.CTkLabel(scroll, text=label + ":").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+                ctk.CTkLabel(scroll, text=label + ":", font=ctk.CTkFont(weight="bold"))\
+                    .grid(row=row, column=0, sticky="w", padx=5, pady=5)
                 ent = ctk.CTkEntry(scroll, textvariable=var, width=200)
                 ent.grid(row=row, column=1, sticky="ew", padx=5, pady=5)
                 dv[key] = var
@@ -1576,8 +1636,7 @@ def modificar_radicado(parent_root, conn, user_id):
 
             detail_vars.append(dv)
 
-        # 3) Botón de actualizar
-        ctk.CTkButton(win, text="Actualizar todo", command=_guardar).pack(pady=10)
+
 
 
     def _guardar():
@@ -1650,18 +1709,23 @@ def modificar_radicado(parent_root, conn, user_id):
     # Construye la UI
     frm_search = ctk.CTkFrame(win)
     frm_search.pack(fill="x", padx=20, pady=(20,10))
-    ctk.CTkLabel(frm_search, text="Buscar Radicado:", anchor="w").pack(fill="x")
+    ctk.CTkLabel(frm_search, text="Buscar Radicado:", anchor="w",
+                 font=ctk.CTkFont(weight="bold")).pack(fill="x")
     ctk.CTkEntry(frm_search, textvariable=entry_radicado_var).pack(side="left", fill="x", expand=True, pady=5)
     ctk.CTkButton(frm_search, text="Buscar", command=_buscar).pack(side="right", padx=(10,0))
     frm_info = ctk.CTkFrame(win)
     frm_info.pack(fill="x", padx=20, pady=(0,10))
     for label_text, var in [("Radicado:", entry_radicado_var),("NIT:", entry_nit_var),("Factura:", entry_factura_var)]:
         cell = ctk.CTkFrame(frm_info); cell.pack(side="left", expand=True, fill="x", padx=5)
-        ctk.CTkLabel(cell, text=label_text, anchor="w").pack(fill="x")
+        ctk.CTkLabel(cell, text=label_text, anchor="w",
+                     font=ctk.CTkFont(weight="bold")).pack(fill="x")
         ctk.CTkEntry(cell, textvariable=var, state="readonly").pack(fill="x")
     scroll = ctk.CTkScrollableFrame(win, fg_color="#2b2b2b")
     scroll.pack(fill="both", expand=True, padx=20, pady=(0,10))
     for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
+
+    # Botón final para guardar todo
+    ctk.CTkButton(win, text="Actualizar todo", command=_guardar).pack(pady=10)
 
 def iniciar_calidad(parent_root, conn, current_user_id):
     settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
@@ -1864,14 +1928,18 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
     def on_close():
         # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE ASIGNACION_TIPIFICACION 
-            SET STATUS_ID = 1 
-            WHERE RADICADO = %s
-        """, (radicado,))
-        conn.commit()
-        cur.close()
+        if radicado is not None:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE ASIGNACION_TIPIFICACION
+                SET STATUS_ID = 1
+                WHERE RADICADO = %s
+                """,
+                (radicado,),
+            )
+            conn.commit()
+            cur.close()
         win.destroy()  # Cierra la ventana después de actualizar el estado
 
     # Configurar el evento de cierre de la ventana
@@ -4570,9 +4638,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # ——————————————————————————————
         self.lbl_saludo = QtWidgets.QLabel(f"Bienvenido, {first_name} {last_name}")
         self.lbl_saludo.setAlignment(QtCore.Qt.AlignCenter)
-        # Dejamos un color “por defecto neutral” aquí; lo ajustaremos en apply_theme
+        # Color inicial se ajustará luego en apply_theme
         self.lbl_saludo.setStyleSheet("""
-            color: #FFFFFF;              /* inicialmente blanco, asumiendo tema oscuro */
+            color: #FFFFFF;              /* placeholder, será reemplazado */
             font-size: 28px;
             font-weight: 600;
             background: transparent;
@@ -4754,17 +4822,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 """)
         if hasattr(self, "lbl_saludo"):
             if theme == "light":
-                # Texto blanco sobre fondo oscuro
+                # Texto negro sobre fondo claro
                 self.lbl_saludo.setStyleSheet("""
-                    color: #FFFFFF;
+                    color: #000000;
                     font-size: 28px;
                     font-weight: 600;
                     background: transparent;
                 """)
             else:
-                # Texto negro sobre fondo claro
+                # Texto blanco sobre fondo oscuro
                 self.lbl_saludo.setStyleSheet("""
-                    color: #000000;
+                    color: #FFFFFF;
                     font-size: 28px;
                     font-weight: 600;
                     background: transparent;
@@ -4945,6 +5013,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_logout(self):
         """Cierra el dashboard y relanza el login."""
+        settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+        settings.setValue("theme", self.theme)
         self.close()
         script = resource_path("login_app.py")
         subprocess.Popen(
