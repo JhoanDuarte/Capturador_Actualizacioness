@@ -4706,7 +4706,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         from PyQt5.QtWidgets import QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect
         from PyQt5.QtGui import QPainter, QImage, QPalette, QBrush
         
-        bg_file = "FondoDashboardWhite.png" if theme == "dark" else "FondoDashboardDark.png"
+        bg_file = "FondoDashboardDark.png" if theme == "dark" else "FondoDashboardWhite.png"
         app = QtWidgets.QApplication.instance()
 
         # — Stylesheet para tema oscuro —
@@ -4824,7 +4824,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 self.panel.bg_blur = self.bg_blur_pix
                 self.panel.update()
         # Elige stylesheet e icono según el tema
-        if theme == "light":
+        if theme == "dark":
             app.setStyleSheet(dark_ss)
             self.theme_btn.setIcon(self.icon_moon)
             bg_file = "FondoDashboardDark.png"
@@ -4833,7 +4833,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             self.theme_btn.setIcon(self.icon_sun)
             bg_file = "FondoDashboardWhite.png"
             
-        if self.theme == "dark":
+        if theme == "dark":
             self.panel.set_overlay_color((255,255,255), alpha=155)
         else:
             self.panel.set_overlay_color((0,0,0), alpha=155)
