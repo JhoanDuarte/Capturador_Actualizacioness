@@ -374,17 +374,17 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
-        entry_fg_color   = "#424242"  # fondo de CTkEntry en dark
-        entry_text_color = "white"    # texto dentro de CTkEntry en blanco
-        placeholder_color= "#BBBBBB"  # color de placeholder (un gris aclarado)
+        entry_fg_color   = "white"    # campos en blanco para contrastar
+        entry_text_color = "black"    # texto negro en las entradas
+        placeholder_color= "#555555"  # gris medio para placeholder
     else:
         # tema “light-blue”
         color_container   = "#F8F8F8"  # gris clarito casi blanco
         color_card        = "#EAEAEA"  # un pelín más oscuro que container
         fg_text_color    = "black"    # todo texto en negro
-        entry_fg_color   = "white"    # fondo de CTkEntry en claro (blanco)
-        entry_text_color = "black"    # texto dentro de CTkEntry en negro
-        placeholder_color= "#666666"  # gris oscuro para placeholder
+        entry_fg_color   = "black"    # campos en negro
+        entry_text_color = "white"    # texto blanco dentro de CTkEntry
+        placeholder_color= "#AAAAAA"  # gris para placeholder
         
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
@@ -636,7 +636,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             text=label_text,
             anchor='w',
             text_color=fg_text_color,   # <–– cada Label hereda el color dinámico
-            font=ctk.CTkFont(weight='bold')
+
+            font=("Arial", 12, "bold")
         ).pack(fill='x')
         return frame
 
@@ -1770,17 +1771,17 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
-        entry_fg_color   = "#424242"  # fondo de CTkEntry en dark
-        entry_text_color = "white"    # texto dentro de CTkEntry en blanco
-        placeholder_color= "#BBBBBB"  # color de placeholder (un gris aclarado)
+        entry_fg_color   = "white"    # campos blancos
+        entry_text_color = "black"    # texto negro
+        placeholder_color= "#555555"  # gris medio
     else:
         # tema “light-blue”
         color_container   = "#F8F8F8"  # gris clarito casi blanco
         color_card        = "#EAEAEA"  # un pelín más oscuro que container
         fg_text_color    = "black"    # todo texto en negro
-        entry_fg_color   = "white"    # fondo de CTkEntry en claro (blanco)
-        entry_text_color = "black"    # texto dentro de CTkEntry en negro
-        placeholder_color= "#666666"  # gris oscuro para placeholder
+        entry_fg_color   = "black"    # campos negros
+        entry_text_color = "white"    # texto blanco
+        placeholder_color= "#AAAAAA"  # gris para placeholder
         
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
@@ -2023,7 +2024,8 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             frame,
             text=label_text,
             anchor='w',
-            text_color=fg_text_color    # <–– cada Label hereda el color dinámico
+            text_color=fg_text_color,
+            font=("Arial", 12, "bold")  # etiquetas resaltadas
         ).pack(fill='x')
         return frame
 
@@ -2950,6 +2952,12 @@ def ver_progreso(root, conn):
         for var in estado_vars.values():
             var.set(val)
 
+    # — Seleccionar solo los estados actualmente visibles —
+    def _solo_visibles_est():
+        for est, cb in estado_checks.items():
+            estado_vars[est].set(cb.winfo_ismapped())
+        actualizar_tabs()
+
     # — Filtrar/mostrar solo checks de usuario coincidentes —
     def _filtrar_usr(event=None):
         term = buscar_usr.get().lower()
@@ -2963,6 +2971,12 @@ def ver_progreso(root, conn):
     def _marcar_usr(val):
         for var in user_vars.values():
             var.set(val)
+
+    # — Seleccionar solo los usuarios actualmente visibles —
+    def _solo_visibles_usr():
+        for usr, cb in user_checks.items():
+            user_vars[usr].set(cb.winfo_ismapped())
+        actualizar_tabs()
 
     # — Carga datos en las dos pestañas según filtros —
     import datetime  # asegúrate de tener esto al inicio de tu módulo
@@ -3465,8 +3479,9 @@ def ver_progreso(root, conn):
     buscar_est.bind("<KeyRelease>", _filtrar_est)
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=7, column=0, sticky="w")
     ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=1, sticky="e")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=120).grid(row=8, column=0, columnspan=2, pady=(5,0))
     estado_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    estado_frame.grid(row=8, column=0, columnspan=2, sticky="w")
+    estado_frame.grid(row=9, column=0, columnspan=2, sticky="w")
     estado_vars = {}
     estado_checks = {}
     for est in estados:
@@ -3499,8 +3514,11 @@ def ver_progreso(root, conn):
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=11, column=0, sticky="w")
     ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=11, column=1, sticky="e")
+
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=120).grid(row=12, column=0, columnspan=2, pady=(5,0))
     user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    user_frame.grid(row=12, column=0, columnspan=2, sticky="w")
+    user_frame.grid(row=13, column=0, columnspan=2, sticky="w")
+
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -3510,10 +3528,11 @@ def ver_progreso(root, conn):
         user_vars[usr] = var
         user_checks[usr] = cb
         
-     # — Filtro libre de Radicados —
-    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=13, column=0, sticky="nw", pady=(10,0))
+
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=14, column=0, sticky="nw", pady=(10,0))
     rad_text = ctk.CTkTextbox(sidebar, width=200, height=100)
-    rad_text.grid(row=13, column=1, sticky="w", pady=(10,0))
+    rad_text.grid(row=14, column=1, sticky="w", pady=(10,0))
+
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
     # Pestañas de resultados
@@ -4941,8 +4960,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         QComboBox { background-color: rgba(0,0,0,10%); color: #000; }
         """
         if hasattr(self, "cmb_role"):
+          
             if theme == "light":
-
+              
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
                         background-color: rgba(0, 0, 0, 150);
@@ -4959,7 +4979,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
                         selection-background-color: #303030;
                     }
                 """)
+                
             else:
+              
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
                         background-color: rgba(255, 255, 255, 150);
@@ -5173,10 +5195,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         settings.setValue("theme", self.theme)
         self.close()
         script = resource_path("login_app.py")
-        subprocess.Popen(
-            [sys.executable, script],
-            cwd=os.path.dirname(script)
-        )
+        subprocess.Popen([sys.executable, script], cwd=os.path.dirname(script))
 
     # ——————————————————————————————
     # Métodos de acción (stubs; implementa tu lógica aquí)
