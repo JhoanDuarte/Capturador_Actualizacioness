@@ -22,7 +22,7 @@ import tkinter as tk
 from io import BytesIO
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem
-from PyQt5.QtGui import QPainter, QPainterPath, QImage, QRegion
+from PyQt5.QtGui import QPainter, QPainterPath, QImage, QRegion, QColor
 from PyQt5.QtCore import QRectF, QRect, QPoint
 from tkinter import filedialog, messagebox, ttk
 
@@ -300,6 +300,26 @@ class ScrollableFrame(ctk.CTkFrame):
                 c.yview_moveto(new_top / float(total_h - view_h))
         
 def iniciar_tipificacion(parent_root, conn, current_user_id):
+    
+    settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+    tema_actual = settings.value("theme", "dark")  # “dark” o “light”
+    
+    if tema_actual == "light":
+        color_container  = "#1e1e1e"  # fondo general “dark”
+        color_card       = "#2b2b2b"  # fondo del “card” en dark
+        fg_text_color    = "white"    # todo texto va en blanco
+        entry_fg_color   = "#424242"  # fondo de CTkEntry en dark
+        entry_text_color = "white"    # texto dentro de CTkEntry en blanco
+        placeholder_color= "#BBBBBB"  # color de placeholder (un gris aclarado)
+    else:
+        # tema “light-blue”
+        color_container   = "#F8F8F8"  # gris clarito casi blanco
+        color_card        = "#EAEAEA"  # un pelín más oscuro que container
+        fg_text_color    = "black"    # todo texto en negro
+        entry_fg_color   = "white"    # fondo de CTkEntry en claro (blanco)
+        entry_text_color = "black"    # texto dentro de CTkEntry en negro
+        placeholder_color= "#666666"  # gris oscuro para placeholder
+        
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
     entry_factura_var  = tk.StringVar()
@@ -352,6 +372,53 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     # 3) Ventana principal
     win = ctk.CTkToplevel(parent_root)
     win.title(f"Capturador De Datos · Paquete {pkg}")
+    
+    radicado = None
+    nit      = None
+    factura  = None
+
+    def copy_radicado():
+        win.clipboard_clear()
+        win.clipboard_append(entry_radicado_var.get())
+
+    def load_assignment():
+        nonlocal radicado, nit, factura
+
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT TOP 1 RADICADO, NIT, FACTURA
+              FROM ASIGNACION_TIPIFICACION
+             WHERE STATUS_ID    = 1
+               AND NUM_PAQUETE  = %s
+               AND TIPO_PAQUETE = 'DIGITACION'
+             ORDER BY NEWID()
+        """, (pkg,))
+        row = cur.fetchone()
+        cur.close()
+        if not row:
+            return False
+
+        radicado, nit, factura = row
+        # marcamos como “en curso”
+        cur2 = conn.cursor()
+        cur2.execute(
+            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s",
+            (radicado,)
+        )
+        conn.commit()
+        cur2.close()
+
+        # actualizamos UI y copiamos al portapapeles
+        entry_radicado_var.set(str(radicado))
+        entry_nit_var.set(str(nit))
+        entry_factura_var.set(str(factura))
+        copy_radicado()
+        return True
+
+    # ————— Llamada inicial —————
+    if not load_assignment():
+        messagebox.showinfo("Sin asignaciones", "No hay asignaciones pendientes.")
+        return
 
     # Obtener la resolución de la pantalla
     screen_width = win.winfo_screenwidth()
@@ -373,12 +440,12 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
     win.grab_set()
 
-    container = ctk.CTkFrame(win, fg_color="#1e1e1e")
+    container = ctk.CTkFrame(win, fg_color=color_container)
     container.grid(row=0, column=0, sticky="nsew")
     win.grid_rowconfigure(0, weight=1)
     win.grid_columnconfigure(0, weight=1)
 
-    card = ctk.CTkFrame(container, fg_color="#2b2b2b")
+    card = ctk.CTkFrame(container, fg_color=color_card)
     card.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
     container.grid_rowconfigure(0, weight=1)
     container.grid_columnconfigure(0, weight=1)
@@ -393,7 +460,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         card,
         text=f"📦 Paquete #{pkg}",
         font=ctk.CTkFont(size=26, weight='bold'),
-        text_color='white'
+        text_color=fg_text_color
     ).pack(pady=(0, 15))
 
 
@@ -403,35 +470,44 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     read_frame.grid_columnconfigure(1, weight=1)
 
     # Labels fijos
-    ctk.CTkLabel(read_frame, text="Radicado:", anchor='w').grid(row=0, column=0, pady=5, sticky='w')
+    ctk.CTkLabel(read_frame, text="Radicado:", anchor='w', text_color=fg_text_color).grid(row=0, column=0, pady=5, sticky='w')
     ctk.CTkEntry(
         read_frame,
         textvariable=entry_radicado_var,   # <-- aquí
+        fg_color=entry_fg_color,            # fondo de la entrada según tema
+        text_color=entry_text_color,        # texto de la entrada según tema
+        placeholder_text_color=placeholder_color,
         state='readonly',
         width=300
     ).grid(row=0, column=1, pady=5, sticky='ew', padx=(10,0))
 
-    ctk.CTkLabel(read_frame, text="NIT:", anchor='w').grid(row=1, column=0, pady=5, sticky='w')
+    ctk.CTkLabel(read_frame, text="NIT:", anchor='w', text_color=fg_text_color).grid(row=1, column=0, pady=5, sticky='w')
     ctk.CTkEntry(
         read_frame,
         textvariable=entry_nit_var,        # <-- y aquí
         state='readonly',
-        width=300
+        width=300,
+        fg_color=entry_fg_color,            # fondo de la entrada según tema
+        text_color=entry_text_color,        # texto de la entrada según tema
+        placeholder_text_color=placeholder_color
     ).grid(row=1, column=1, pady=5, sticky='ew', padx=(10,0))
 
-    ctk.CTkLabel(read_frame, text="Factura:", anchor='w').grid(row=2, column=0, pady=5, sticky='w')
+    ctk.CTkLabel(read_frame, text="Factura:", anchor='w', text_color=fg_text_color).grid(row=2, column=0, pady=5, sticky='w')
     ctk.CTkEntry(
         read_frame,
         textvariable=entry_factura_var,    # <-- y aquí
         state='readonly',
-        width=300
+        width=300,
+        fg_color=entry_fg_color,            # fondo de la entrada según tema
+        text_color=entry_text_color,        # texto de la entrada según tema
+        placeholder_text_color=placeholder_color
     ).grid(row=2, column=1, pady=5, sticky='ew', padx=(10,0))
 
 
     # 5) Scrollable y grid de 3 columnas
-    scroll = ScrollableFrame(card, fg_color='#2b2b2b')
+    scroll = ScrollableFrame(card, fg_color=color_card)
     scroll.pack(fill='both', expand=True, padx=20, pady=(10,0))
-    card.pack_propagate(False) 
+    card.pack_propagate(False)
     card.grid_rowconfigure(1, weight=1)
     card.grid_columnconfigure(0, weight=1)
     for col in range(3):
@@ -505,8 +581,13 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         frame = ctk.CTkFrame(scroll.scrollable_frame, fg_color='transparent')
         if icon_url:
             ico = load_icon_from_url(icon_url, size=(20,20))
-            ctk.CTkLabel(frame, image=ico, text='').pack(side='left', padx=(0,5))
-        ctk.CTkLabel(frame, text=label_text, anchor='w').pack(fill='x')
+            ctk.CTkLabel(frame, image=ico, text="").pack(side='left', padx=(0,5))
+        ctk.CTkLabel(
+            frame,
+            text=label_text,
+            anchor='w',
+            text_color=fg_text_color    # <–– cada Label hereda el color dinámico
+        ).pack(fill='x')
         return frame
 
 
@@ -600,6 +681,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             textvariable=var_fecha,
             placeholder_text='DD/MM/AAAA',
             width=300,
+            fg_color=entry_fg_color,
+            text_color=entry_text_color,
+            placeholder_text_color=placeholder_color,
             validate='key',
             validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
         )
@@ -643,7 +727,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             ''.join(ch for ch in var_tipo.get().upper() if 'A' <= ch <= 'Z')
         ))
 
-        entry_tipo = AutocompleteEntry(frm, opts_td, width=300, textvariable=var_tipo)
+        entry_tipo = AutocompleteEntry(frm, opts_td, width=300,fg_color=entry_fg_color,
+            text_color=entry_text_color,
+            placeholder_text_color=placeholder_color, textvariable=var_tipo)
         entry_tipo.pack(fill='x', pady=(5,0))
         apply_focus_style(entry_tipo,scroll)
 
@@ -700,6 +786,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         entry_num = ctk.CTkEntry(
             frm, textvariable=var_num,
             placeholder_text='Solo dígitos', width=300,
+            fg_color=entry_fg_color,
+            text_color=entry_text_color,
+            placeholder_text_color=placeholder_color,
             validate='key', validatecommand=(win.register(lambda s: s.isdigit()), '%S')
         )
         entry_num.pack(fill='x', pady=(5,0))
@@ -748,6 +837,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             frm,
             values=opciones,
             width=300,
+            fg_color=entry_fg_color,
+            text_color=entry_text_color,
+            placeholder_text_color=placeholder_color,
             textvariable=var_diag
         )
         entry_diag.pack(fill='x', pady=(5,0))
@@ -851,6 +943,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
                 w = ctk.CTkEntry(
                     frm, textvariable=var, width=300,
+                    fg_color=entry_fg_color,
+                    text_color=entry_text_color,
+                    placeholder_text_color=placeholder_color,
                     placeholder_text='Solo 9 dígitos', validate='key',
                     validatecommand=vcmd_auth
                 )
@@ -894,6 +989,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
                 w = ctk.CTkEntry(
                     frm, textvariable=var,
                     placeholder_text='CÓDIGO DE SERVICIO', width=300,
+                    fg_color=entry_fg_color,
+                    text_color=entry_text_color,
+                    placeholder_text_color=placeholder_color,
                     validate='key', validatecommand=vcmd_cs
                 )
                 w.pack(fill='x', pady=(5, 0))
@@ -930,6 +1028,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
                 w = ctk.CTkEntry(
                     frm, textvariable=var, width=300,
+                    fg_color=entry_fg_color,
+                    text_color=entry_text_color,
+                    placeholder_text_color=placeholder_color,
                     placeholder_text=placeholder,
                     validate='key', validatecommand=vcmd_num
                 )
@@ -956,6 +1057,9 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             else:
                 w = ctk.CTkEntry(
                     frm, textvariable=var, width=300,
+                    fg_color=entry_fg_color,
+                    text_color=entry_text_color,
+                    placeholder_text_color=placeholder_color,
                     placeholder_text=default
                 )
                 w.pack(fill='x', pady=(5, 0))
@@ -1078,51 +1182,6 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
                             w.configure(border_color='#2b2b2b', border_width=1)
 
             return ok
-
-    def load_assignment():
-        """Carga aleatoriamente un radicado pendiente y actualiza los widgets."""
-        nonlocal radicado, nit, factura
-
-        # 1) Obtener nueva asignación
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT TOP 1 RADICADO, NIT, FACTURA
-            FROM ASIGNACION_TIPIFICACION
-            WHERE STATUS_ID = 1
-            AND NUM_PAQUETE = %s
-            AND TIPO_PAQUETE = 'DIGITACION'
-            ORDER BY NEWID()
-        """, (pkg,))
-        row = cur.fetchone()
-        if not row:
-            messagebox.showinfo("Sin asignaciones", "No hay asignaciones pendientes.")
-            cur.close()
-            return False  # Indica que no hay más asignaciones
-        radicado, nit, factura = row
-        cur.execute(
-            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s",
-            (radicado,)
-        )
-        conn.commit()
-        cur.close()
-
-        # 2) Actualizar campos de la GUI
-        entry_radicado_var.set(str(radicado))
-        entry_nit_var.set(str(nit))
-        entry_factura_var.set(str(factura))
-
-        # 3) Limpiar campos de tipificación previos
-        for var in field_vars.values():
-            var.set('')
-        for dv in detail_vars:
-            for info in dv.values():
-                if isinstance(info, dict):
-                    info['var'].set('')
-                    
-        if 'FECHA_SERVICIO' in widgets:
-            widgets['FECHA_SERVICIO'].focus_set()
-
-        return True
 
     def do_save(final=False):
         if not validate_and_save(final):
@@ -1613,6 +1672,25 @@ def modificar_radicado(parent_root, conn, user_id):
     for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
 
 def iniciar_calidad(parent_root, conn, current_user_id):
+    settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+    tema_actual = settings.value("theme", "dark")  # “dark” o “light”
+    
+    if tema_actual == "light":
+        color_container  = "#1e1e1e"  # fondo general “dark”
+        color_card       = "#2b2b2b"  # fondo del “card” en dark
+        fg_text_color    = "white"    # todo texto va en blanco
+        entry_fg_color   = "#424242"  # fondo de CTkEntry en dark
+        entry_text_color = "white"    # texto dentro de CTkEntry en blanco
+        placeholder_color= "#BBBBBB"  # color de placeholder (un gris aclarado)
+    else:
+        # tema “light-blue”
+        color_container   = "#F8F8F8"  # gris clarito casi blanco
+        color_card        = "#EAEAEA"  # un pelín más oscuro que container
+        fg_text_color    = "black"    # todo texto en negro
+        entry_fg_color   = "white"    # fondo de CTkEntry en claro (blanco)
+        entry_text_color = "black"    # texto dentro de CTkEntry en negro
+        placeholder_color= "#666666"  # gris oscuro para placeholder
+        
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
     entry_factura_var  = tk.StringVar()
@@ -1626,30 +1704,6 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     pkg = cur.fetchone()[0] or 0
     tipo_paquete = 'CALIDAD'
     cur.close()
-
-
-    # 2) Asignación aleatoria
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT TOP 1 RADICADO, NIT, FACTURA
-        FROM ASIGNACION_TIPIFICACION
-        WHERE STATUS_ID = 1
-        AND NUM_PAQUETE = %s
-        AND TIPO_PAQUETE = 'CALIDAD'
-        ORDER BY NEWID()
-    """, (pkg,))
-    row = cur.fetchone()
-    if not row:
-        messagebox.showinfo("Sin asignaciones", "No hay asignaciones pendientes.")
-        cur.close()
-        return
-    radicado, nit, factura = row
-    entry_radicado_var.set(str(radicado))
-    entry_nit_var.set(str(nit))
-    entry_factura_var.set(str(factura))
-    cur.execute("UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s", (radicado,))
-    conn.commit()
-    cur.close()
     
     cur2 = conn.cursor()
     cur2.execute("""
@@ -1661,9 +1715,51 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     campos_paquete = {row[0] for row in cur2.fetchall()}
     cur2.close()
 
+    # DECLARAMOS las variables de la asignación para todo el ámbito
+    radicado = None
+    nit = None
+    factura = None
+
     # 3) Ventana principal
     win = ctk.CTkToplevel(parent_root)
     win.title(f"Capturador De Datos · Paquete {pkg}")
+    
+    def copy_radicado():
+        win.clipboard_clear()
+        win.clipboard_append(entry_radicado_var.get())
+        
+    def load_assignment():
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT TOP 1 RADICADO, NIT, FACTURA
+            FROM ASIGNACION_TIPIFICACION
+            WHERE STATUS_ID = 1
+              AND NUM_PAQUETE = %s
+              AND TIPO_PAQUETE = 'CALIDAD'
+            ORDER BY NEWID()
+        """, (pkg,))
+        row = cur.fetchone()
+        if not row:
+            cur.close()
+            return False
+        radicado, nit, factura = row
+        cur.execute(
+            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s",
+            (radicado,)
+        )
+        conn.commit()
+        cur.close()
+
+        entry_radicado_var.set(str(radicado))
+        entry_nit_var.set(str(nit))
+        entry_factura_var.set(str(factura))
+        copy_radicado()
+        return True
+
+    # 4) Llamada inicial
+    if not load_assignment():
+        messagebox.showinfo("Sin asignaciones", "No hay asignaciones pendientes.")
+        return
 
     # Obtener la resolución de la pantalla
     screen_width = win.winfo_screenwidth()
@@ -1685,12 +1781,12 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
     win.grab_set()
 
-    container = ctk.CTkFrame(win, fg_color="#1e1e1e")
+    container = ctk.CTkFrame(win, fg_color=color_container)
     container.grid(row=0, column=0, sticky="nsew")
     win.grid_rowconfigure(0, weight=1)
     win.grid_columnconfigure(0, weight=1)
 
-    card = ctk.CTkFrame(container, fg_color="#2b2b2b")
+    card = ctk.CTkFrame(container, fg_color=color_card)
     card.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
     container.grid_rowconfigure(0, weight=1)
     container.grid_columnconfigure(0, weight=1)
@@ -1705,7 +1801,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         card,
         text=f"📦 Paquete #{pkg}",
         font=ctk.CTkFont(size=26, weight='bold'),
-        text_color='white'
+        text_color=fg_text_color
     ).pack(pady=(0, 15))
 
 
@@ -1715,35 +1811,44 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     read_frame.grid_columnconfigure(1, weight=1)
 
     # Labels fijos
-    ctk.CTkLabel(read_frame, text="Radicado:", anchor='w').grid(row=0, column=0, pady=5, sticky='w')
+    ctk.CTkLabel(read_frame, text="Radicado:", anchor='w', text_color=fg_text_color).grid(row=0, column=0, pady=5, sticky='w')
     ctk.CTkEntry(
         read_frame,
         textvariable=entry_radicado_var,   # <-- aquí
         state='readonly',
-        width=300
+        width=300,
+        fg_color=entry_fg_color,            # fondo de la entrada según tema
+        text_color=entry_text_color,        # texto de la entrada según tema
+        placeholder_text_color=placeholder_color
     ).grid(row=0, column=1, pady=5, sticky='ew', padx=(10,0))
 
-    ctk.CTkLabel(read_frame, text="NIT:", anchor='w').grid(row=1, column=0, pady=5, sticky='w')
+    ctk.CTkLabel(read_frame, text="NIT:", anchor='w',text_color=fg_text_color).grid(row=1, column=0, pady=5, sticky='w')
     ctk.CTkEntry(
         read_frame,
         textvariable=entry_nit_var,        # <-- y aquí
         state='readonly',
-        width=300
+        width=300,
+        fg_color=entry_fg_color,            # fondo de la entrada según tema
+        text_color=entry_text_color,        # texto de la entrada según tema
+        placeholder_text_color=placeholder_color
     ).grid(row=1, column=1, pady=5, sticky='ew', padx=(10,0))
 
-    ctk.CTkLabel(read_frame, text="Factura:", anchor='w').grid(row=2, column=0, pady=5, sticky='w')
+    ctk.CTkLabel(read_frame, text="Factura:", anchor='w',text_color=fg_text_color).grid(row=2, column=0, pady=5, sticky='w')
     ctk.CTkEntry(
         read_frame,
         textvariable=entry_factura_var,    # <-- y aquí
         state='readonly',
-        width=300
+        width=300,
+        fg_color=entry_fg_color,            # fondo de la entrada según tema
+        text_color=entry_text_color,        # texto de la entrada según tema
+        placeholder_text_color=placeholder_color
     ).grid(row=2, column=1, pady=5, sticky='ew', padx=(10,0))
 
 
     # 5) Scrollable y grid de 3 columnas
-    scroll = ScrollableFrame(card, fg_color='#2b2b2b')
+    scroll = ScrollableFrame(card, fg_color=color_card)
     scroll.pack(fill='both', expand=True, padx=20, pady=(10,0))
-    card.pack_propagate(False) 
+    card.pack_propagate(False)
     card.grid_rowconfigure(1, weight=1)
     card.grid_columnconfigure(0, weight=1)
     for col in range(3):
@@ -1816,8 +1921,13 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         frame = ctk.CTkFrame(scroll.scrollable_frame, fg_color='transparent')
         if icon_url:
             ico = load_icon_from_url(icon_url, size=(20,20))
-            ctk.CTkLabel(frame, image=ico, text='').pack(side='left', padx=(0,5))
-        ctk.CTkLabel(frame, text=label_text, anchor='w').pack(fill='x')
+            ctk.CTkLabel(frame, image=ico, text="").pack(side='left', padx=(0,5))
+        ctk.CTkLabel(
+            frame,
+            text=label_text,
+            anchor='w',
+            text_color=fg_text_color    # <–– cada Label hereda el color dinámico
+        ).pack(fill='x')
         return frame
 
 
@@ -1908,6 +2018,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             textvariable=var_fecha,
             placeholder_text='DD/MM/AAAA',
             width=300,
+            fg_color=entry_fg_color,
+            text_color=entry_text_color,
+            placeholder_text_color=placeholder_color,
             validate='key',
             validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
         )
@@ -1951,6 +2064,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             textvariable=var_fecha_final,
             placeholder_text='DD/MM/AAAA',
             width=300,
+            fg_color=entry_fg_color,
+            text_color=entry_text_color,
+            placeholder_text_color=placeholder_color,
             validate='key',
             validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
         )
@@ -2078,6 +2194,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         entry_num = ctk.CTkEntry(
             frm, textvariable=var_num,
             placeholder_text='Solo dígitos', width=300,
+            fg_color=entry_fg_color,
+            text_color=entry_text_color,
+            placeholder_text_color=placeholder_color,
             validate='key', validatecommand=(win.register(lambda s: s.isdigit()), '%S')
         )
         entry_num.pack(fill='x', pady=(5,0))
@@ -2229,6 +2348,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
                 w = ctk.CTkEntry(
                     frm, textvariable=var, width=300,
+                    fg_color=entry_fg_color,
+                    text_color=entry_text_color,
+                    placeholder_text_color=placeholder_color,
                     placeholder_text='Solo 9 dígitos', validate='key',
                     validatecommand=vcmd_auth
                 )
@@ -2264,6 +2386,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                 w = ctk.CTkEntry(
                     frm, textvariable=var,
                     placeholder_text='CÓDIGO DE SERVICIO', width=300,
+                    fg_color=entry_fg_color,
+                    text_color=entry_text_color,
+                    placeholder_text_color=placeholder_color,
                     validate='key', validatecommand=vcmd_cs
                 )
                 w.pack(fill='x', pady=(5, 0))
@@ -2300,6 +2425,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
                 w = ctk.CTkEntry(
                     frm, textvariable=var, width=300,
+                    fg_color=entry_fg_color,
+                    text_color=entry_text_color,
+                    placeholder_text_color=placeholder_color,
                     placeholder_text=placeholder,
                     validate='key', validatecommand=vcmd_num
                 )
@@ -2326,6 +2454,9 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             else:
                 w = ctk.CTkEntry(
                     frm, textvariable=var, width=300,
+                    fg_color=entry_fg_color,
+                    text_color=entry_text_color,
+                    placeholder_text_color=placeholder_color,
                     placeholder_text=default
                 )
                 w.pack(fill='x', pady=(5, 0))
@@ -2450,52 +2581,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                         w.configure(border_color='#2b2b2b', border_width=1)
 
         return ok
-
-    def load_assignment():
-        """Carga aleatoriamente un radicado pendiente y actualiza los widgets."""
-        nonlocal radicado, nit, factura
-
-        # 1) Obtener nueva asignación
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT TOP 1 RADICADO, NIT, FACTURA
-            FROM ASIGNACION_TIPIFICACION
-            WHERE STATUS_ID = 1
-            AND NUM_PAQUETE = %s
-            AND TIPO_PAQUETE = 'CALIDAD'
-            ORDER BY NEWID()
-        """, (pkg,))
-        row = cur.fetchone()
-        if not row:
-            messagebox.showinfo("Sin asignaciones", "No hay asignaciones pendientes.")
-            cur.close()
-            return False  # Indica que no hay más asignaciones
-        radicado, nit, factura = row
-        cur.execute(
-            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s",
-            (radicado,)
-        )
-        conn.commit()
-        cur.close()
-
-        # 2) Actualizar campos de la GUI
-        entry_radicado_var.set(str(radicado))
-        entry_nit_var.set(str(nit))
-        entry_factura_var.set(str(factura))
-
-        # 3) Limpiar campos de tipificación previos
-        for var in field_vars.values():
-            var.set('')
-        for dv in detail_vars:
-            for info in dv.values():
-                if isinstance(info, dict):
-                    info['var'].set('')
-                    
-        if 'FECHA_SERVICIO' in widgets:
-            widgets['FECHA_SERVICIO'].focus_set()
-        
-        return True
-
+    
     def do_save(final=False):
         if not validate_and_save(final):
             return
@@ -2733,6 +2819,19 @@ def ver_progreso(root, conn):
             ph = ", ".join("%s" for _ in sel_usr)
             filtros.append(f"(u.FIRST_NAME + ' ' + u.LAST_NAME) IN ({ph})")
             params.extend(sel_usr)
+
+        raw = rad_text.get("0.0", "end").strip()
+        if raw:
+            # cada línea un radicado
+            try:
+                lista = [int(r.strip()) for r in raw.splitlines() if r.strip()]
+            except ValueError:
+                messagebox.showwarning("Radicados inválidos", "Revisa la lista de radicados.")
+                return None, None
+            if lista:
+                ph = ", ".join("%s" for _ in lista)
+                filtros.append(f"a.RADICADO IN ({ph})")
+                params.extend(lista)
 
         where_clause = " AND ".join(filtros)
         return where_clause, tuple(params)
@@ -3132,8 +3231,14 @@ def ver_progreso(root, conn):
     win.grab_set()
     win.protocol("WM_DELETE_WINDOW", lambda: safe_destroy(win))
 
-    topfrm = ctk.CTkFrame(win, fg_color="transparent")
-    topfrm.pack(fill="x", padx=20, pady=(20, 0))
+    mainfrm = ctk.CTkFrame(win, fg_color="transparent")
+    mainfrm.pack(expand=True, fill="both", padx=20, pady=20)
+
+    sidebar = ctk.CTkFrame(mainfrm, width=280)
+    sidebar.pack(side="left", fill="y", padx=(0, 20))
+
+    data_panel = ctk.CTkFrame(mainfrm, fg_color="transparent")
+    data_panel.pack(side="right", fill="both", expand=True)
 
     # Paquete
     cur = conn.cursor()
@@ -3141,8 +3246,12 @@ def ver_progreso(root, conn):
     paquetes = [str(r[0]) for r in cur.fetchall()] or ["0"]
     cur.close()
     pkg_var = tk.StringVar(value=paquetes[0])
-    ctk.CTkLabel(topfrm, text="Paquete:").grid(row=0, column=0, sticky="w")
-    ctk.CTkOptionMenu(topfrm, values=paquetes, variable=pkg_var, width=80).grid(row=0, column=1, padx=(0,20), sticky="w")
+
+    filtros_top = ctk.CTkFrame(sidebar, fg_color="transparent")
+    filtros_top.pack(fill="x")
+
+    ctk.CTkLabel(filtros_top, text="Paquete:").grid(row=0, column=0, sticky="w")
+    ctk.CTkOptionMenu(filtros_top, values=paquetes, variable=pkg_var, width=120).grid(row=0, column=1, pady=2)
 
     # Tipo de paquete
     cur = conn.cursor()
@@ -3150,52 +3259,48 @@ def ver_progreso(root, conn):
     tipos_paquete = [r[0] or "" for r in cur.fetchall()]
     cur.close()
     var_tipo_paquete = tk.StringVar(value=tipos_paquete[0])
-    ctk.CTkLabel(topfrm, text="Tipo Paquete:").grid(row=0, column=2, sticky="w")
-    ctk.CTkOptionMenu(topfrm, values=tipos_paquete, variable=var_tipo_paquete, width=80).grid(row=0, column=3, padx=(0,20), sticky="w")
+    ctk.CTkLabel(filtros_top, text="Tipo Paquete:").grid(row=1, column=0, sticky="w", pady=(5,0))
+    ctk.CTkOptionMenu(filtros_top, values=tipos_paquete, variable=var_tipo_paquete, width=120).grid(row=1, column=1, pady=(5,0))
 
     # Fechas
     var_fecha_desde = tk.StringVar()
-    
     var_fecha_hasta = tk.StringVar()
-    
+
     def limpiar_fechas():
-        # 1) Borra las variables para que construir_filtros ignore las fechas
         var_fecha_desde.set("")
         var_fecha_hasta.set("")
-        # 2) Borra el texto que queda en los DateEntry (usa su método delete)
         fecha_desde.delete(0, "end")
         fecha_hasta.delete(0, "end")
-    
-    ctk.CTkLabel(topfrm, text="Desde:").grid(row=0, column=4, sticky="w")
-    fecha_desde = DateEntry(topfrm, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_desde)
-    fecha_desde.grid(row=0, column=5, padx=(0,20), sticky="w")
+
+    ctk.CTkLabel(filtros_top, text="Desde:").grid(row=2, column=0, sticky="w", pady=(5,0))
+    fecha_desde = DateEntry(filtros_top, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_desde)
+    fecha_desde.grid(row=2, column=1, pady=(5,0))
     fecha_desde.delete(0, 'end')
-    
-    ctk.CTkLabel(topfrm, text="Hasta:").grid(row=0, column=6, sticky="w")
-    fecha_hasta = DateEntry(topfrm, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_hasta)
-    fecha_hasta.grid(row=0, column=7, padx=(0,20), sticky="w")
+
+    ctk.CTkLabel(filtros_top, text="Hasta:").grid(row=3, column=0, sticky="w")
+    fecha_hasta = DateEntry(filtros_top, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_hasta)
+    fecha_hasta.grid(row=3, column=1, pady=2)
     fecha_hasta.delete(0, 'end')
 
-    ctk.CTkButton(topfrm, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=0, column=8, padx=(0,20))
-    ctk.CTkButton(topfrm, text="Aplicar filtros", command=actualizar_tabs, width=120).grid(row=0, column=9, padx=(0,20))
-    ctk.CTkButton(topfrm,
-        text="Exportar",
-        command=exportar,
-        width=100
-    ).grid(row=0, column=10)
+    ctk.CTkButton(filtros_top, text="Limpiar fechas", command=limpiar_fechas, width=120).grid(row=4, column=0, columnspan=2, pady=(10,2))
+    ctk.CTkButton(filtros_top, text="Aplicar filtros", command=actualizar_tabs, width=120).grid(row=5, column=0, columnspan=2, pady=2)
+    ctk.CTkButton(filtros_top, text="Exportar", command=exportar, width=120).grid(row=6, column=0, columnspan=2, pady=(2,10))
+
     # Filtro de estados
     cur = conn.cursor()
     cur.execute("SELECT NAME FROM STATUS ORDER BY NAME")
     estados = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(topfrm, text="Estado:").grid(row=1, column=0, sticky="w", pady=(20,5))
-    buscar_est = ctk.CTkEntry(topfrm, width=200, placeholder_text="Buscar estado...")
-    buscar_est.grid(row=1, column=1, columnspan=3, sticky="w", padx=(0,20), pady=(20,5))
+    ctk.CTkLabel(sidebar, text="Estado:").pack(anchor="w", pady=(10,0))
+    buscar_est = ctk.CTkEntry(sidebar, width=200, placeholder_text="Buscar estado...")
+    buscar_est.pack(fill="x")
     buscar_est.bind("<KeyRelease>", _filtrar_est)
-    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=1, column=4, pady=(20,5), sticky="w")
-    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=1, column=5, pady=(20,5), sticky="w")
-    estado_frame = ctk.CTkScrollableFrame(topfrm, width=250, height=120)
-    estado_frame.grid(row=2, column=0, columnspan=6, sticky="w")
+    btns_est = ctk.CTkFrame(sidebar, fg_color="transparent")
+    btns_est.pack(fill="x", pady=2)
+    ctk.CTkButton(btns_est, text="Todo", command=lambda: _marcar_est(True), width=60).pack(side="left", padx=2)
+    ctk.CTkButton(btns_est, text="Ninguno", command=lambda: _marcar_est(False), width=60).pack(side="left", padx=2)
+    estado_frame = ctk.CTkScrollableFrame(sidebar, width=250, height=120)
+    estado_frame.pack(fill="x", pady=(2,10))
     estado_vars = {}
     estado_checks = {}
     for est in estados:
@@ -3210,14 +3315,16 @@ def ver_progreso(root, conn):
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(topfrm, text="Usuario:").grid(row=1, column=6, sticky="w", pady=(20,5), padx=(20,0))
-    buscar_usr = ctk.CTkEntry(topfrm, width=200, placeholder_text="Buscar usuario...")
-    buscar_usr.grid(row=1, column=7, columnspan=2, sticky="w", pady=(20,5))
+    ctk.CTkLabel(sidebar, text="Usuario:").pack(anchor="w", pady=(10,0))
+    buscar_usr = ctk.CTkEntry(sidebar, width=200, placeholder_text="Buscar usuario...")
+    buscar_usr.pack(fill="x")
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=1, column=9, pady=(20,5), sticky="w", padx=(5,0))
-    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=1, column=10, pady=(20,5), sticky="w", padx=(5,0))
-    user_frame = ctk.CTkScrollableFrame(topfrm, width=250, height=120)
-    user_frame.grid(row=2, column=6, columnspan=5, sticky="w")
+    btns_usr = ctk.CTkFrame(sidebar, fg_color="transparent")
+    btns_usr.pack(fill="x", pady=2)
+    ctk.CTkButton(btns_usr, text="Todo", command=lambda: _marcar_usr(True), width=60).pack(side="left", padx=2)
+    ctk.CTkButton(btns_usr, text="Ninguno", command=lambda: _marcar_usr(False), width=60).pack(side="left", padx=2)
+    user_frame = ctk.CTkScrollableFrame(sidebar, width=250, height=120)
+    user_frame.pack(fill="x")
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -3226,10 +3333,22 @@ def ver_progreso(root, conn):
         cb.pack(anchor="w", pady=2)
         user_vars[usr] = var
         user_checks[usr] = cb
+        
+     # — Filtro libre de Radicados —
+    ctk.CTkLabel(topfrm, text="Radicados (uno por línea):").grid(row=3, column=0, sticky="nw", pady=(10,0))
+    rad_text = ctk.CTkTextbox(topfrm, width=200, height=100)
+    rad_text.grid(row=3, column=1, columnspan=3, sticky="w", pady=(10,0))
 
+    # Botón que re-aplica todos los filtros, incluyendo radicados
+    ctk.CTkButton(
+        topfrm,
+        text="Aplicar Radicados",
+        command=actualizar_tabs,
+        width=120
+    ).grid(row=3, column=4, padx=(20,0), pady=(10,0), sticky="w")
     # Pestañas de resultados
-    tabs = ctk.CTkTabview(win, width=760, height=440)
-    tabs.pack(padx=20, pady=(10,20), fill="both", expand=True)
+    tabs = ctk.CTkTabview(data_panel, width=760, height=440)
+    tabs.pack(expand=True, fill="both")
     tabs.add("Por Estado")
     tabs.add("Por Usuario")
     win._tabview = tabs
@@ -4095,8 +4214,8 @@ if "--actualizar-datos" in sys.argv:
         
 if "--modificar-radicado" in sys.argv:
     # Configura el tema
-    ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("dark-blue")
+    ctk.set_appearance_mode("light")
+    ctk.set_default_color_theme("blue")
 
     # Crea el root (no lo ocultes)
     root = tk.Tk()
@@ -4179,42 +4298,61 @@ def safe_destroy(win):
         pass
     
 
-def make_semitransparent_image(w, h, radius=20, alpha=150):
+def make_semitransparent_image(w, h, radius=20, alpha=150, rgb_color=(0,0,0)):
+    """
+    Crea una imagen RGBA de fondo semitransparente redondeado
+    usando `rgb_color` para el canal RGB y `alpha` para la opacidad.
+    """
+    # Partimos de un lienzo completamente transparente
     img = Image.new("RGBA", (w, h), (0,0,0,0))
-    mask = Image.new("L", (w, h), 0)
+    mask = Image.new("L", (w, h), 0)                   # máscara de niveles de gris
     draw = ImageDraw.Draw(mask)
-    draw.rounded_rectangle((0,0,w,h), radius=radius, fill=alpha)
-    black = Image.new("RGBA", (w, h), (0,0,0,alpha))
-    img.paste(black, (0,0), mask)
+    draw.rounded_rectangle((0, 0, w, h), radius=radius, fill=alpha)
+
+    # Creamos un recuadro RGBA (rgb_color + alpha)
+    rgba_color = (rgb_color[0], rgb_color[1], rgb_color[2], alpha)
+    rect = Image.new("RGBA", (w, h), rgba_color)
+
+    # Pegamos el rectángulo usando la máscara
+    img.paste(rect, (0,0), mask)
     return img
+
 
 # -----------------------------------------------------------------------------
 # styled_window: crea un Toplevel con fondo y panel redondeado/transparente
 # -----------------------------------------------------------------------------
-def styled_window(parent, title, bg_file, width, height):
+def styled_window(parent, title, bg_file, width, height, use_light_panel=False):
+    """
+    Si use_light_panel=True, el panel se pintará en blanco semitransparente.
+    Si es False, en negro semitransparente.
+    """
     win = ctk.CTkToplevel(parent)
     win.title(title)
     win.geometry(f"{width}x{height}")
     win.resizable(False, False)
 
-    # 1) canvas para fondo + panel
+    # … (carga del fondo igual a como lo tenías) …
     canvas = tk.Canvas(win, width=width, height=height, highlightthickness=0)
     canvas.place(x=0, y=0)
-
-    # 2) imagen de fondo
     bg_path = resource_path(bg_file)
     if os.path.exists(bg_path):
         bg = Image.open(bg_path).resize((width, height), Image.LANCZOS)
         tk_bg = ImageTk.PhotoImage(bg)
         canvas.create_image(0, 0, anchor="nw", image=tk_bg)
-        canvas.bg_img = tk_bg  # mantener referencia
+        canvas.bg_img = tk_bg
 
     # 3) panel semitransparente redondeado
     panel_w, panel_h = int(width * 0.8), int(height * 0.8)
     panel_x = (width - panel_w) // 2
     panel_y = (height - panel_h) // 2
 
-    semi = make_semitransparent_image(panel_w, panel_h, radius=20, alpha=150)
+    # Elegimos blanco o negro según use_light_panel:
+    if use_light_panel:
+        rgb = (255, 255, 255)
+    else:
+        rgb = (0, 0, 0)
+
+    semi = make_semitransparent_image(panel_w, panel_h, radius=20, alpha=150, rgb_color=rgb)
     tk_semi = ImageTk.PhotoImage(semi)
     canvas.create_image(panel_x, panel_y, anchor="nw", image=tk_semi)
     canvas.semi_img = tk_semi
@@ -4226,57 +4364,157 @@ def styled_window(parent, title, bg_file, width, height):
 
     return win, content
 
+
 class BlurFrame(QtWidgets.QFrame):
-    def __init__(self, bg_blur_pixmap, corner_radius=20, overlay_alpha=155, *args, **kwargs):
+    def __init__(self, bg_blur_pixmap: QtGui.QPixmap,
+                 corner_radius: int = 20,
+                 overlay_alpha: int = 155,
+                 overlay_rgb: tuple = (0,0,0),
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bg_blur = bg_blur_pixmap
         self.corner_radius = corner_radius
-        self.overlay_color = QtGui.QColor(0, 0, 0, overlay_alpha)
+        # overlay_rgb es (r,g,b) de 0–255
+        self.overlay_color = QColor(overlay_rgb[0], overlay_rgb[1], overlay_rgb[2], overlay_alpha)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        self.setAutoFillBackground(False)
+
         # Máscara redondeada inicial
         path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()), corner_radius, corner_radius)
+        path.addRoundedRect(QRectF(self.rect()), self.corner_radius, self.corner_radius)
         self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
-    def resizeEvent(self, event):
-        # Actualiza la máscara en cada resize
+    def set_overlay_color(self, rgb_color: tuple, alpha: int = 155):
+        """
+        Permite cambiar dinámicamente el color de la capa semitransparente.
+        """
+        self.overlay_color = QColor(rgb_color[0], rgb_color[1], rgb_color[2], alpha)
+        self.update() 
+
+    def resizeEvent(self, event: QtGui.QResizeEvent):
+        """
+        Cada vez que el frame cambia de tamaño, actualizamos la máscara para mantener
+        las esquinas redondeadas en la nueva geometría.
+        """
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()), self.corner_radius, self.corner_radius)
         self.setMask(QRegion(path.toFillPolygon().toPolygon()))
         super().resizeEvent(event)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QtGui.QPaintEvent):
+        """
+        Sobrescribimos paintEvent para:
+        1. Recortar en bg_blur la región que corresponde a la posición del frame.
+        2. Dibujar ese sub-pixmap en las coordenadas locales del frame.
+        3. Pintar una capa semitransparente encima (overlay).
+        """
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Clip redondeado
+        # 1) Crear ruta redondeada y establecerla como clip
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()), self.corner_radius, self.corner_radius)
         painter.setClipPath(path)
 
-        # Dibujar sólo la porción borrosa
-        offset = self.mapTo(self.window(), QPoint(0, 0))
-        cropped = self.bg_blur.copy(QtCore.QRect(offset, self.size()))
-        painter.drawPixmap(0, 0, cropped)
+        # 2) Calcular el offset (posición) del frame respecto a la ventana principal
+        top_left_global = self.mapTo(self.window(), QPoint(0, 0))
+        x0, y0 = top_left_global.x(), top_left_global.y()
+        w, h = self.width(), self.height()
 
-        # Overlay semitransparente
+        # 3) Asegurarnos de no pasarnos de los límites del pixmap completo
+        full_pixmap = self.bg_blur
+        x0_clamped = max(0, min(x0, full_pixmap.width()))
+        y0_clamped = max(0, min(y0, full_pixmap.height()))
+        w_clamped = min(w, full_pixmap.width() - x0_clamped)
+        h_clamped = min(h, full_pixmap.height() - y0_clamped)
+
+        if w_clamped > 0 and h_clamped > 0:
+            # 4) Extraer el sub-pixmap (región borrosa) correspondiente al frame
+            cropped = full_pixmap.copy(x0_clamped, y0_clamped, w_clamped, h_clamped)
+            # 5) Dibujar ese sub-pixmap en (0, 0) de este frame
+            painter.drawPixmap(0, 0, w_clamped, h_clamped, cropped)
+
+        # 6) Dibujar overlay semitransparente (negro con alpha)
         painter.fillPath(path, self.overlay_color)
         painter.end()
 
+        # 7) Llamar al paintEvent de la clase base para que luego se pinten hijos, bordes, etc.
         super().paintEvent(event)
         
 class DashboardWindow(QtWidgets.QMainWindow):
-    def __init__(self, user_id, first_name, last_name, parent=None):
+    def __init__(self, user_id, first_name, last_name, *, theme: str = "dark", parent=None):
         super().__init__(parent)
+        self.theme = theme
+        settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+        self.theme = settings.value("theme", self.theme)   # lee "dark" o "light"
+        self.icon_moon = QtGui.QIcon(resource_path("moon.png"))
+        self.icon_sun  = QtGui.QIcon(resource_path("sun.png"))
         import tkinter as tk
-        self._tk_root = tk.Tk()
-        self._tk_root.withdraw()
         self.user_id = user_id
         self.first_name = first_name
         self.last_name = last_name
+ # ——— HABILITAR DIBUJO DEL FONDO ———        
+        self.setAutoFillBackground(True)
+
+        # ——— CARGAR TU IMAGEN DE FONDO ———
+        central = QtWidgets.QWidget()
+        central.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        central.setAutoFillBackground(False)
+        self.setCentralWidget(central)
+        central.setAutoFillBackground(True)
+
+        # ——— CARGAR IMAGEN DE FONDO SEGÚN EL TEMA ———
+        # Asumimos que self.theme == "dark" ó "light"
+        bg_file = "FondoDashboardDark.png" if self.theme == "dark" else "FondoDashboardWhite.png"
+        bg_path = resource_path(bg_file)
+
+        if os.path.exists(bg_path):
+            # 1) Escalar el pixmap al tamaño actual de la ventana
+            pix = QtGui.QPixmap(bg_path).scaled(
+                self.size(),
+                QtCore.Qt.KeepAspectRatioByExpanding,
+                QtCore.Qt.SmoothTransformation
+            )
+
+            # Aplicar pix como fondo de la ventana (solo este fragmento, sin asignar bg_blur_pix aquí)
+            palette = QtGui.QPalette()
+            palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
+            self.setPalette(palette)
+            central.setPalette(palette)
+        else:
+            # …
+            self.setAutoFillBackground(False)
+            central.setPalette(QtGui.QPalette())
+
+        # … luego, más abajo, cuando generas el blur:
+        pix = QtGui.QPixmap(bg_path).scaled(
+            self.size(),
+            QtCore.Qt.KeepAspectRatioByExpanding,
+            QtCore.Qt.SmoothTransformation
+        )
+        scene = QGraphicsScene()
+        item = QGraphicsPixmapItem(pix)
+        blur = QGraphicsBlurEffect()
+        blur.setBlurRadius(15)
+        item.setGraphicsEffect(blur)
+        scene.addItem(item)
+
+        img = QImage(pix.size(), QImage.Format_ARGB32_Premultiplied)
+        img.fill(QtCore.Qt.transparent)
+        painter = QPainter(img)
+        scene.render(painter)
+        painter.end()
+
+        # → Aquí sí puedes asignar correctamente:
+        self.bg_blur_pix = QtGui.QPixmap.fromImage(img)
+            
+        # ——— AHORA PUEDES SEGUIR CON TU CÓDIGO NORMAL ——–
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
         self.center_on_screen()
 
+        # Después, inicializa CTk y el resto...
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("dark-blue")
 
         # Conexión a BD
         self.conn = conectar_sql_server("DB_DATABASE")
@@ -4286,26 +4524,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
             )
             sys.exit(1)
             
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("dark-blue")
         # Configuración de la ventana
         self.setWindowTitle("Dashboard · Capturador De Datos")
         self.resize(900, 900)
         self.center_on_screen()
-
-        # ——————————————————————————————
-        # 1) Fondo de la ventana
-        # ——————————————————————————————
-        bg_path = resource_path("Fondo2.png")
-        if os.path.exists(bg_path):
-            palette = QtGui.QPalette()
-            pix = QtGui.QPixmap(bg_path).scaled(
-                self.size(),
-                QtCore.Qt.KeepAspectRatioByExpanding,
-                QtCore.Qt.SmoothTransformation
-            )
-            palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
-            self.setPalette(palette)
             
         pix = QtGui.QPixmap(bg_path).scaled(
             self.size(),
@@ -4338,6 +4560,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # 2) Panel central semitransparente
         # ——————————————————————————————
         central = QtWidgets.QWidget()
+        central.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        central.setAutoFillBackground(False)
         self.setCentralWidget(central)
         v_layout = QtWidgets.QVBoxLayout(central)
         v_layout.setContentsMargins(0, 0, 0, 0)
@@ -4372,17 +4596,16 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # ——————————————————————————————
         # 3) Encabezado con saludo
         # ——————————————————————————————
-        lbl_saludo = QtWidgets.QLabel(f"Bienvenido, {first_name} {last_name}")
-        lbl_saludo.setAlignment(QtCore.Qt.AlignCenter)
-        lbl_saludo.setStyleSheet("""
-            color: #FFFFFF;
-            font-size: 28px;         /* un poco más grande */
-            font-weight: 600;        /* seminegrita */
+        self.lbl_saludo = QtWidgets.QLabel(f"Bienvenido, {first_name} {last_name}")
+        self.lbl_saludo.setAlignment(QtCore.Qt.AlignCenter)
+        # Dejamos un color “por defecto neutral” aquí; lo ajustaremos en apply_theme
+        self.lbl_saludo.setStyleSheet("""
+            color: #FFFFFF;              /* inicialmente blanco, asumiendo tema oscuro */
+            font-size: 28px;
+            font-weight: 600;
             background: transparent;
         """)
-        p_layout.addWidget(lbl_saludo)
-        
-        p_layout.addSpacing(20)
+        p_layout.addWidget(self.lbl_saludo)
 
         # ——————————————————————————————
         # 4) Selector de rol
@@ -4409,17 +4632,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # Instalamos el filtro
         f = PopupOnClickFilter(self.cmb_role)
         le.installEventFilter(f)
-
-        self.cmb_role.setStyleSheet("""
-            QComboBox {
-                background-color: rgba(255,255,255,200);
-                border-radius: 10px;
-                padding: 8px 16px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QComboBox::drop-down { border: none; }
-        """)
+        
         p_layout.addWidget(self.cmb_role, alignment=QtCore.Qt.AlignCenter)
 
 
@@ -4466,6 +4679,212 @@ class DashboardWindow(QtWidgets.QMainWindow):
         hbox_logout.addWidget(btn_logout)
         hbox_logout.addStretch()
         p_layout.addLayout(hbox_logout)
+        
+        self.theme_btn = QtWidgets.QPushButton(self)
+        self.theme_btn.setToolTip("Cambiar tema día/noche")
+        self.theme_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self.theme_btn.setFixedSize(40, 40)
+        self.theme_btn.setIconSize(QtCore.QSize(40, 40))
+        self.theme_btn.setFlat(True)
+        self.theme_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        # Posición y estado inicial
+        self.theme_btn.move(self.width() - 60, self.height() - 60)
+        self.theme_btn.setIcon(self.icon_moon if self.theme == "dark" else self.icon_sun)
+        self.theme_btn.clicked.connect(self.toggle_theme)
+        self.theme_btn.raise_()
+        
+        self.apply_theme(self.theme)
+
+        # Para reposicionar al redimensionar
+        self.resizeEvent = self._on_resize
+        
+    def apply_theme(self, theme: str):
+        """
+        Aplica el stylesheet global según 'dark' o 'light', actualiza el icono
+        del botón y cambia la imagen de fondo a FondoDashboardDark.png o FondoDashboardWhite.png.
+        """
+        from PyQt5 import QtGui, QtCore
+        from PyQt5.QtWidgets import QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect
+        from PyQt5.QtGui import QPainter, QImage, QPalette, QBrush
+        
+        bg_file = "FondoDashboardWhite.png" if theme == "dark" else "FondoDashboardDark.png"
+        app = QtWidgets.QApplication.instance()
+
+        # — Stylesheet para tema oscuro —
+        dark_ss = """
+        QWidget { background-color: #2b2b2b; color: #f0f0f0; }
+        QFrame#dashboardPanel { background-color: rgba(0,0,0,140); }
+        QPushButton { 
+            background-color: #2B7DBF; color: #fff; border-radius:20px; 
+            padding:8px 16px; font-weight:bold; 
+        }
+        QPushButton:hover { background-color: #3291DE; }
+        QComboBox { background-color: rgba(255,255,255,200); color: #000; }
+        """
+
+        # — Stylesheet para tema claro —
+        light_ss = """
+        QWidget { background-color: #f4f4f9; color: #000; }
+        QFrame#dashboardPanel { background-color: rgba(255,255,255,200); border:1px solid rgba(0,0,0,25%); }
+        QPushButton { 
+            background-color: #1E90FF; color: #fff; border-radius:20px; 
+            padding:8px 16px; font-weight:bold; 
+        }
+        QPushButton:hover { background-color: #006FDE; }
+        QComboBox { background-color: rgba(0,0,0,10%); color: #000; }
+        """
+        if hasattr(self, "cmb_role"):
+            if theme == "light":
+                # En tema oscuro, background blanco y texto negro
+                self.cmb_role.setStyleSheet("""
+                    QComboBox {
+                        background-color: rgba(255, 255, 255, 150);
+                        color: #000000;
+                        border-radius: 10px;
+                        padding: 8px 16px;
+                        font-size: 14px;
+                        font-weight: bold;
+                    }
+                    QComboBox::drop-down { border: none; }
+
+                    /* Cuando se abra la lista desplegable, que el fondo también sea blanco y texto negro */
+                    QComboBox QAbstractItemView {
+                        background-color: #FFFFFF;
+                        color: #000000;
+                        selection-background-color: #E0E0E0;
+                    }
+                """)
+            else:
+                # En tema claro, background negro y texto blanco
+                self.cmb_role.setStyleSheet("""
+                    QComboBox {
+                        background-color: rgba(0, 0, 0, 150);
+                        color: #FFFFFF;
+                        border-radius: 10px;
+                        padding: 8px 16px;
+                        font-size: 14px;
+                        font-weight: bold;
+                    }
+                    QComboBox::drop-down { border: none; }
+
+                    /* Cuando se abra la lista desplegable, que el fondo también sea negro y texto blanco */
+                    QComboBox QAbstractItemView {
+                        background-color: #000000;
+                        color: #FFFFFF;
+                        selection-background-color: #303030;
+                    }
+                """)
+        if hasattr(self, "lbl_saludo"):
+            if theme == "light":
+                # Texto blanco sobre fondo oscuro
+                self.lbl_saludo.setStyleSheet("""
+                    color: #FFFFFF;
+                    font-size: 28px;
+                    font-weight: 600;
+                    background: transparent;
+                """)
+            else:
+                # Texto negro sobre fondo claro
+                self.lbl_saludo.setStyleSheet("""
+                    color: #000000;
+                    font-size: 28px;
+                    font-weight: 600;
+                    background: transparent;
+                """)
+                
+        bg_path = resource_path(bg_file)
+        if os.path.exists(bg_path):
+            pix = QtGui.QPixmap(bg_path).scaled(
+                self.size(),
+                QtCore.Qt.KeepAspectRatioByExpanding,
+                QtCore.Qt.SmoothTransformation
+            )
+
+            # 2) Actualizar la paleta de la ventana
+            palette = QtGui.QPalette()
+            palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
+            self.setPalette(palette)
+
+            # 3) Volver a generar el pixmap borroso
+            scene = QGraphicsScene()
+            item  = QGraphicsPixmapItem(pix)
+            blur = QGraphicsBlurEffect()
+            blur.setBlurRadius(15)
+            item.setGraphicsEffect(blur)
+            scene.addItem(item)
+
+            img = QImage(pix.size(), QImage.Format_ARGB32_Premultiplied)
+            img.fill(QtCore.Qt.transparent)
+            painter = QPainter(img)
+            scene.render(painter)
+            painter.end()
+
+            # 4) Asignar el nuevo blur al dashboard y al panel
+            self.bg_blur_pix = QtGui.QPixmap.fromImage(img)
+            if hasattr(self, 'panel'):
+                self.panel.bg_blur = self.bg_blur_pix
+                self.panel.update()
+        # Elige stylesheet e icono según el tema
+        if theme == "light":
+            app.setStyleSheet(dark_ss)
+            self.theme_btn.setIcon(self.icon_moon)
+            bg_file = "FondoDashboardDark.png"
+        else:
+            app.setStyleSheet(light_ss)
+            self.theme_btn.setIcon(self.icon_sun)
+            bg_file = "FondoDashboardWhite.png"
+            
+        if self.theme == "dark":
+            self.panel.set_overlay_color((255,255,255), alpha=155)
+        else:
+            self.panel.set_overlay_color((0,0,0), alpha=155)
+
+        # — Ahora cargamos el PNG correspondiente y lo escalamos al tamaño actual —
+        from PyQt5 import QtGui, QtCore
+
+        bg_path = resource_path(bg_file)
+        if os.path.exists(bg_path):
+            pix = QtGui.QPixmap(bg_path).scaled(
+                self.size(),
+                QtCore.Qt.KeepAspectRatioByExpanding,
+                QtCore.Qt.SmoothTransformation
+            )
+            palette = QtGui.QPalette()
+            palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
+            self.setPalette(palette)
+
+            # También ponemos un estilo de CSS “por si acaso” (opcional):
+            self.setStyleSheet(f"""
+                QMainWindow {{
+                    background-image: url("{bg_path.replace("\\","/")}"); 
+                    background-position: center;
+                    background-repeat: no-repeat;
+                }}
+            """)
+        else:
+            # Si no existe el archivo, al menos quitamos cualquier fondo anterior
+            # para que no se quede colgado.
+            self.setAutoFillBackground(False)
+            self.setStyleSheet("")
+
+    def toggle_theme(self):
+        """Invierte el tema, lo reaplica y lo guarda en QSettings."""
+        self.theme = "light" if self.theme == "dark" else "dark"
+        self.apply_theme(self.theme)
+        settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+        settings.setValue("theme", self.theme)
+
+
+    def _on_resize(self, event):
+        """Reposiciona el botón de tema al cambiar tamaño."""
+        self.theme_btn.move(self.width() - 60, self.height() - 60)
+        return super().resizeEvent(event)
 
     def center_on_screen(self):
         """Centra la ventana en la pantalla."""
@@ -4505,6 +4924,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # Definición de botones por rol
         btns_by_role = {
             1: [
+                ("Capturar Datos",                          self.on_iniciar_digitacion),
+                ("Validar Calidad",                         self.on_iniciar_calidad),
                 ("Cargar Paquete",                          self.on_cargar_paquete),
                 ("Crear Usuario",                           self.on_crear_usuario),
                 ("Actualizar Datos",                        self.on_actualizar_datos),
@@ -4761,26 +5182,13 @@ class DashboardWindow(QtWidgets.QMainWindow):
         subprocess.Popen([sys.executable, script, "--crear-usuario"])
 
     def on_iniciar_digitacion(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--iniciar-tipificacion",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+
+        """Lanza la ventana de digitación dentro del mismo proceso"""
+        iniciar_tipificacion(self._tk_root, self.conn, self.user_id)
 
     def on_iniciar_calidad(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--iniciar-calidad",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        """Lanza la ventana de control de calidad directamente"""
+        iniciar_calidad(self._tk_root, self.conn, self.user_id)
 
     def on_ver_progreso(self):
         # Abrir la ventana de progreso directamente usando el mismo Tk root
@@ -4789,51 +5197,21 @@ class DashboardWindow(QtWidgets.QMainWindow):
             self._tk_root = tk.Tk()
             self._tk_root.withdraw()
 
-        ver_progreso(self._tk_root, self.conn)
-
     def on_exportar_paquete(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--exportar-paquete",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        """Abre el diálogo para exportar paquetes"""
+        exportar_paquete(self._tk_root, self.conn)
 
     def on_actualizar_datos(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--actualizar-datos",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        """Abre la ventana para actualizar datos del usuario"""
+        actualizar_usuario(self._tk_root, self.conn, self.user_id)
 
     def on_modificar_estado_usuario(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--desactivar-usuario",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
-    
+        """Permite modificar el estado de usuarios"""
+        modificar_estado_usuario(self._tk_root, self.conn)
+
     def on_modificar_radicado(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--modificar-radicado",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        """Muestra la interfaz para modificar radicados""" 
+        modificar_radicado(self._tk_root, self.conn, self.user_id)
 
 
 if __name__ == "__main__":
