@@ -630,7 +630,6 @@ class LoginWindow(QtWidgets.QWidget):
     def toggle_theme(self):
         app = QtWidgets.QApplication.instance()
         settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
-        settings.setValue("theme", "dark" if self.is_dark else "light")
 
         if self.is_dark:
             # → PASAR A CLARO
@@ -730,7 +729,10 @@ class LoginWindow(QtWidgets.QWidget):
 
         # Aplica TODO el CSS de una sola vez:
         app.setStyleSheet(light_ss if self.is_dark else dark_ss)
+        # Invertimos el estado actual
         self.is_dark = not self.is_dark
+        # Guardamos el tema resultante para próximas ejecuciones
+        settings.setValue("theme", "dark" if self.is_dark else "light")
 
 # Función para enviar código por correo
 def enviar_codigo_por_email(email_destino):
