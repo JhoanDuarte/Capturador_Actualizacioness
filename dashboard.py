@@ -3227,12 +3227,16 @@ def ver_progreso(root, conn):
     # — Creación de ventana principal y layout de filtros/pestañas —
     win = ctk.CTkToplevel(root)
     win.title("Ver Progreso de Paquetes")
-    win.geometry("1150x700")
+    win.minsize(900, 500)
     win.grab_set()
     win.protocol("WM_DELETE_WINDOW", lambda: safe_destroy(win))
 
-    topfrm = ctk.CTkFrame(win, fg_color="transparent")
-    topfrm.pack(fill="x", padx=20, pady=(20, 0))
+    # -- Layout general: barra lateral de filtros + contenido central --
+    sidebar = ctk.CTkScrollableFrame(win, width=260)
+    sidebar.pack(side="left", fill="y", padx=(20, 10), pady=20)
+
+    content = ctk.CTkFrame(win, fg_color="transparent")
+    content.pack(side="left", fill="both", expand=True, padx=(0, 20), pady=20)
 
     # Paquete
     cur = conn.cursor()
@@ -3240,8 +3244,9 @@ def ver_progreso(root, conn):
     paquetes = [str(r[0]) for r in cur.fetchall()] or ["0"]
     cur.close()
     pkg_var = tk.StringVar(value=paquetes[0])
-    ctk.CTkLabel(topfrm, text="Paquete:").grid(row=0, column=0, sticky="w")
-    ctk.CTkOptionMenu(topfrm, values=paquetes, variable=pkg_var, width=80).grid(row=0, column=1, padx=(0,20), sticky="w")
+    ctk.CTkLabel(sidebar, text="Paquete:").grid(row=0, column=0, sticky="w")
+    ctk.CTkOptionMenu(sidebar, values=paquetes, variable=pkg_var, width=120).grid(row=0, column=1, padx=(0,10), sticky="w")
+    pkg_var.trace_add("write", lambda *a: actualizar_tabs())
 
     # Tipo de paquete
     cur = conn.cursor()
@@ -3249,8 +3254,9 @@ def ver_progreso(root, conn):
     tipos_paquete = [r[0] or "" for r in cur.fetchall()]
     cur.close()
     var_tipo_paquete = tk.StringVar(value=tipos_paquete[0])
-    ctk.CTkLabel(topfrm, text="Tipo Paquete:").grid(row=0, column=2, sticky="w")
-    ctk.CTkOptionMenu(topfrm, values=tipos_paquete, variable=var_tipo_paquete, width=80).grid(row=0, column=3, padx=(0,20), sticky="w")
+    ctk.CTkLabel(sidebar, text="Tipo Paquete:").grid(row=1, column=0, sticky="w", pady=(10,0))
+    ctk.CTkOptionMenu(sidebar, values=tipos_paquete, variable=var_tipo_paquete, width=120).grid(row=1, column=1, padx=(0,10), sticky="w")
+    var_tipo_paquete.trace_add("write", lambda *a: actualizar_tabs())
 
     # Fechas
     var_fecha_desde = tk.StringVar()
@@ -3265,41 +3271,38 @@ def ver_progreso(root, conn):
         fecha_desde.delete(0, "end")
         fecha_hasta.delete(0, "end")
     
-    ctk.CTkLabel(topfrm, text="Desde:").grid(row=0, column=4, sticky="w")
-    fecha_desde = DateEntry(topfrm, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_desde)
-    fecha_desde.grid(row=0, column=5, padx=(0,20), sticky="w")
+    ctk.CTkLabel(sidebar, text="Desde:").grid(row=2, column=0, sticky="w", pady=(10,0))
+    fecha_desde = DateEntry(sidebar, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_desde)
+    fecha_desde.grid(row=2, column=1, padx=(0,10), sticky="w")
     fecha_desde.delete(0, 'end')
-    
-    ctk.CTkLabel(topfrm, text="Hasta:").grid(row=0, column=6, sticky="w")
-    fecha_hasta = DateEntry(topfrm, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_hasta)
-    fecha_hasta.grid(row=0, column=7, padx=(0,20), sticky="w")
-    fecha_hasta.delete(0, 'end')
+    var_fecha_desde.trace_add("write", lambda *a: actualizar_tabs())
 
-    ctk.CTkButton(topfrm, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=0, column=8, padx=(0,20))
-    ctk.CTkButton(topfrm, text="Aplicar filtros", command=actualizar_tabs, width=120).grid(row=0, column=9, padx=(0,20))
-    ctk.CTkButton(topfrm,
-        text="Exportar",
-        command=exportar,
-        width=100
-    ).grid(row=0, column=10)
+    ctk.CTkLabel(sidebar, text="Hasta:").grid(row=3, column=0, sticky="w")
+    fecha_hasta = DateEntry(sidebar, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_hasta)
+    fecha_hasta.grid(row=3, column=1, padx=(0,10), sticky="w")
+    fecha_hasta.delete(0, 'end')
+    var_fecha_hasta.trace_add("write", lambda *a: actualizar_tabs())
+
+    ctk.CTkButton(sidebar, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=4, column=0, columnspan=2, pady=(10,0))
+    ctk.CTkButton(sidebar, text="Exportar", command=exportar, width=100).grid(row=5, column=0, columnspan=2, pady=(10,0))
     # Filtro de estados
     cur = conn.cursor()
     cur.execute("SELECT NAME FROM STATUS ORDER BY NAME")
     estados = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(topfrm, text="Estado:").grid(row=1, column=0, sticky="w", pady=(20,5))
-    buscar_est = ctk.CTkEntry(topfrm, width=200, placeholder_text="Buscar estado...")
-    buscar_est.grid(row=1, column=1, columnspan=3, sticky="w", padx=(0,20), pady=(20,5))
+    ctk.CTkLabel(sidebar, text="Estado:").grid(row=6, column=0, sticky="w", pady=(10,5))
+    buscar_est = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar estado...")
+    buscar_est.grid(row=6, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_est.bind("<KeyRelease>", _filtrar_est)
-    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=1, column=4, pady=(20,5), sticky="w")
-    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=1, column=5, pady=(20,5), sticky="w")
-    estado_frame = ctk.CTkScrollableFrame(topfrm, width=250, height=120)
-    estado_frame.grid(row=2, column=0, columnspan=6, sticky="w")
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=7, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=1, sticky="e")
+    estado_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
+    estado_frame.grid(row=8, column=0, columnspan=2, sticky="w")
     estado_vars = {}
     estado_checks = {}
     for est in estados:
         var = tk.BooleanVar(value=True)
-        cb = ctk.CTkCheckBox(estado_frame, text=est, variable=var)
+        cb = ctk.CTkCheckBox(estado_frame, text=est, variable=var, command=actualizar_tabs)
         cb.pack(anchor="w", pady=2)
         estado_vars[est] = var
         estado_checks[est] = cb
@@ -3309,37 +3312,31 @@ def ver_progreso(root, conn):
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(topfrm, text="Usuario:").grid(row=1, column=6, sticky="w", pady=(20,5), padx=(20,0))
-    buscar_usr = ctk.CTkEntry(topfrm, width=200, placeholder_text="Buscar usuario...")
-    buscar_usr.grid(row=1, column=7, columnspan=2, sticky="w", pady=(20,5))
+    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=9, column=0, sticky="w", pady=(10,5))
+    buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
+    buscar_usr.grid(row=9, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(topfrm, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=1, column=9, pady=(20,5), sticky="w", padx=(5,0))
-    ctk.CTkButton(topfrm, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=1, column=10, pady=(20,5), sticky="w", padx=(5,0))
-    user_frame = ctk.CTkScrollableFrame(topfrm, width=250, height=120)
-    user_frame.grid(row=2, column=6, columnspan=5, sticky="w")
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=10, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=10, column=1, sticky="e")
+    user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
+    user_frame.grid(row=11, column=0, columnspan=2, sticky="w")
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
         var = tk.BooleanVar(value=True)
-        cb = ctk.CTkCheckBox(user_frame, text=usr, variable=var)
+        cb = ctk.CTkCheckBox(user_frame, text=usr, variable=var, command=actualizar_tabs)
         cb.pack(anchor="w", pady=2)
         user_vars[usr] = var
         user_checks[usr] = cb
         
      # — Filtro libre de Radicados —
-    ctk.CTkLabel(topfrm, text="Radicados (uno por línea):").grid(row=3, column=0, sticky="nw", pady=(10,0))
-    rad_text = ctk.CTkTextbox(topfrm, width=200, height=100)
-    rad_text.grid(row=3, column=1, columnspan=3, sticky="w", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=12, column=0, sticky="nw", pady=(10,0))
+    rad_text = ctk.CTkTextbox(sidebar, width=200, height=100)
+    rad_text.grid(row=12, column=1, sticky="w", pady=(10,0))
+    rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
-    # Botón que re-aplica todos los filtros, incluyendo radicados
-    ctk.CTkButton(
-        topfrm,
-        text="Aplicar Radicados",
-        command=actualizar_tabs,
-        width=120
-    ).grid(row=3, column=4, padx=(20,0), pady=(10,0), sticky="w")
     # Pestañas de resultados
-    tabs = ctk.CTkTabview(win, width=760, height=440)
+    tabs = ctk.CTkTabview(content, width=760, height=440)
     tabs.pack(padx=20, pady=(10,20), fill="both", expand=True)
     tabs.add("Por Estado")
     tabs.add("Por Usuario")
@@ -4852,9 +4849,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
             self.setPalette(palette)
 
             # También ponemos un estilo de CSS “por si acaso” (opcional):
+            bg_url = bg_path.replace("\\", "/")
             self.setStyleSheet(f"""
                 QMainWindow {{
-                    background-image: url("{bg_path.replace("\\","/")}"); 
+                    background-image: url("{bg_url}");
                     background-position: center;
                     background-repeat: no-repeat;
                 }}
