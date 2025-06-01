@@ -1435,15 +1435,16 @@ def modificar_radicado(parent_root, conn, user_id):
         color_container  = "#1e1e1e"
         color_card       = "#2b2b2b"
         fg_text_color    = "white"
-        entry_fg_color   = "white"
-        entry_text_color = "black"
+        entry_fg_color   = "#424242"  # gris oscuro
+        entry_text_color = "white"
         placeholder_color= "#BBBBBB"
     else:
         color_container  = "#F8F8F8"
         color_card       = "#EAEAEA"
         fg_text_color    = "black"
-        entry_fg_color   = "black"
-        entry_text_color = "white"
+
+        entry_fg_color   = "white"    # campos claros
+        entry_text_color = "black"
         placeholder_color= "#666666"
 
     container = ctk.CTkFrame(win, fg_color=color_container)
@@ -1765,7 +1766,7 @@ def modificar_radicado(parent_root, conn, user_id):
         ctk.CTkLabel(cell, text=label_text, anchor="w",
                      font=ctk.CTkFont(weight="bold")).pack(fill="x")
         ctk.CTkEntry(cell, textvariable=var, state="readonly").pack(fill="x")
-    scroll = ctk.CTkScrollableFrame(win, fg_color="#2b2b2b")
+    scroll = ctk.CTkScrollableFrame(win, fg_color=color_card)
     scroll.pack(fill="both", expand=True, padx=20, pady=(0,10))
     for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
 
@@ -3527,7 +3528,6 @@ def ver_progreso(root, conn):
 
     user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
     user_frame.grid(row=11, column=0, columnspan=3, sticky="w")
-
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -4971,10 +4971,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
         if hasattr(self, "cmb_role"):
           
             if theme == "light":
-              
+
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
-                        background-color: rgba(0, 0, 0, 150);
+                        background-color: rgba(0, 0, 0, 120);
                         color: #FFFFFF;
                         border-radius: 10px;
                         padding: 4px 20px;
@@ -4983,17 +4983,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
                     }
                     QComboBox::drop-down { border: none; }
                     QComboBox QAbstractItemView {
-                        background-color: #000000;
+                        background-color: #2b2b2b;
                         color: #FFFFFF;
-                        selection-background-color: #303030;
+                        selection-background-color: #454545;
                     }
                 """)
-                
+
             else:
-              
+
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
-                        background-color: rgba(255, 255, 255, 150);
+                        background-color: rgba(255, 255, 255, 180);
                         color: #000000;
                         border-radius: 10px;
                         padding: 4px 20px;
@@ -5002,9 +5002,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
                     }
                     QComboBox::drop-down { border: none; }
                     QComboBox QAbstractItemView {
-                        background-color: #FFFFFF;
+                        background-color: #E0E0E0;
                         color: #000000;
-                        selection-background-color: #E0E0E0;
+                        selection-background-color: #CCCCCC;
                     }
                 """)
         if hasattr(self, "lbl_saludo"):
@@ -5231,7 +5231,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
             ctk.CTkLabel(win, text="Tipo de Paquete:", text_color=fg,
                         fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
-            opt_bg = "#000000" if theme == "light" else "#FFFFFF"
+            opt_bg = "#2b2b2b" if theme == "light" else "#e0e0e0"
             opt_fg = "#FFFFFF" if theme == "light" else "#000000"
 
             ctk.CTkOptionMenu(
