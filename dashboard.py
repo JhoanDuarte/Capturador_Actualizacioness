@@ -321,17 +321,17 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
-        entry_fg_color   = "#424242"  # fondo de CTkEntry en dark
-        entry_text_color = "white"    # texto dentro de CTkEntry en blanco
-        placeholder_color= "#BBBBBB"  # color de placeholder (un gris aclarado)
+        entry_fg_color   = "white"    # campos en blanco para contrastar
+        entry_text_color = "black"    # texto negro en las entradas
+        placeholder_color= "#555555"  # gris medio para placeholder
     else:
         # tema “light-blue”
         color_container   = "#F8F8F8"  # gris clarito casi blanco
         color_card        = "#EAEAEA"  # un pelín más oscuro que container
         fg_text_color    = "black"    # todo texto en negro
-        entry_fg_color   = "white"    # fondo de CTkEntry en claro (blanco)
-        entry_text_color = "black"    # texto dentro de CTkEntry en negro
-        placeholder_color= "#666666"  # gris oscuro para placeholder
+        entry_fg_color   = "black"    # campos en negro
+        entry_text_color = "white"    # texto blanco dentro de CTkEntry
+        placeholder_color= "#AAAAAA"  # gris para placeholder
         
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
@@ -524,14 +524,18 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
     def on_close():
         # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE ASIGNACION_TIPIFICACION 
-            SET STATUS_ID = 1 
-            WHERE RADICADO = %s
-        """, (radicado,))
-        conn.commit()
-        cur.close()
+        if radicado is not None:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE ASIGNACION_TIPIFICACION
+                SET STATUS_ID = 1
+                WHERE RADICADO = %s
+                """,
+                (radicado,),
+            )
+            conn.commit()
+            cur.close()
         win.destroy()  # Cierra la ventana después de actualizar el estado
 
     # Configurar el evento de cierre de la ventana
@@ -578,7 +582,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             frame,
             text=label_text,
             anchor='w',
-            text_color=fg_text_color    # <–– cada Label hereda el color dinámico
+            text_color=fg_text_color,   # <–– cada Label hereda el color dinámico
+            font=("Arial", 12, "bold")
         ).pack(fill='x')
         return frame
 
@@ -1671,17 +1676,17 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
-        entry_fg_color   = "#424242"  # fondo de CTkEntry en dark
-        entry_text_color = "white"    # texto dentro de CTkEntry en blanco
-        placeholder_color= "#BBBBBB"  # color de placeholder (un gris aclarado)
+        entry_fg_color   = "white"    # campos blancos
+        entry_text_color = "black"    # texto negro
+        placeholder_color= "#555555"  # gris medio
     else:
         # tema “light-blue”
         color_container   = "#F8F8F8"  # gris clarito casi blanco
         color_card        = "#EAEAEA"  # un pelín más oscuro que container
         fg_text_color    = "black"    # todo texto en negro
-        entry_fg_color   = "white"    # fondo de CTkEntry en claro (blanco)
-        entry_text_color = "black"    # texto dentro de CTkEntry en negro
-        placeholder_color= "#666666"  # gris oscuro para placeholder
+        entry_fg_color   = "black"    # campos negros
+        entry_text_color = "white"    # texto blanco
+        placeholder_color= "#AAAAAA"  # gris para placeholder
         
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
@@ -1864,14 +1869,18 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
     def on_close():
         # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE ASIGNACION_TIPIFICACION 
-            SET STATUS_ID = 1 
-            WHERE RADICADO = %s
-        """, (radicado,))
-        conn.commit()
-        cur.close()
+        if radicado is not None:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE ASIGNACION_TIPIFICACION
+                SET STATUS_ID = 1
+                WHERE RADICADO = %s
+                """,
+                (radicado,),
+            )
+            conn.commit()
+            cur.close()
         win.destroy()  # Cierra la ventana después de actualizar el estado
 
     # Configurar el evento de cierre de la ventana
@@ -1918,7 +1927,8 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             frame,
             text=label_text,
             anchor='w',
-            text_color=fg_text_color    # <–– cada Label hereda el color dinámico
+            text_color=fg_text_color,
+            font=("Arial", 12, "bold")  # etiquetas resaltadas
         ).pack(fill='x')
         return frame
 
@@ -2843,6 +2853,12 @@ def ver_progreso(root, conn):
         for var in estado_vars.values():
             var.set(val)
 
+    # — Seleccionar solo los estados actualmente visibles —
+    def _solo_visibles_est():
+        for est, cb in estado_checks.items():
+            estado_vars[est].set(cb.winfo_ismapped())
+        actualizar_tabs()
+
     # — Filtrar/mostrar solo checks de usuario coincidentes —
     def _filtrar_usr(event=None):
         term = buscar_usr.get().lower()
@@ -2856,6 +2872,12 @@ def ver_progreso(root, conn):
     def _marcar_usr(val):
         for var in user_vars.values():
             var.set(val)
+
+    # — Seleccionar solo los usuarios actualmente visibles —
+    def _solo_visibles_usr():
+        for usr, cb in user_checks.items():
+            user_vars[usr].set(cb.winfo_ismapped())
+        actualizar_tabs()
 
     # — Carga datos en las dos pestañas según filtros —
     import datetime  # asegúrate de tener esto al inicio de tu módulo
@@ -3288,8 +3310,9 @@ def ver_progreso(root, conn):
     buscar_est.bind("<KeyRelease>", _filtrar_est)
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=7, column=0, sticky="w")
     ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=1, sticky="e")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=120).grid(row=8, column=0, columnspan=2, pady=(5,0))
     estado_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    estado_frame.grid(row=8, column=0, columnspan=2, sticky="w")
+    estado_frame.grid(row=9, column=0, columnspan=2, sticky="w")
     estado_vars = {}
     estado_checks = {}
     for est in estados:
@@ -3304,14 +3327,15 @@ def ver_progreso(root, conn):
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=9, column=0, sticky="w", pady=(10,5))
+    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=10, column=0, sticky="w", pady=(10,5))
     buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
-    buscar_usr.grid(row=9, column=1, sticky="w", padx=(0,10), pady=(10,5))
+    buscar_usr.grid(row=10, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=10, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=10, column=1, sticky="e")
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=11, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=11, column=1, sticky="e")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=120).grid(row=12, column=0, columnspan=2, pady=(5,0))
     user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    user_frame.grid(row=11, column=0, columnspan=2, sticky="w")
+    user_frame.grid(row=13, column=0, columnspan=2, sticky="w")
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -3322,9 +3346,9 @@ def ver_progreso(root, conn):
         user_checks[usr] = cb
         
      # — Filtro libre de Radicados —
-    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=12, column=0, sticky="nw", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=14, column=0, sticky="nw", pady=(10,0))
     rad_text = ctk.CTkTextbox(sidebar, width=200, height=100)
-    rad_text.grid(row=12, column=1, sticky="w", pady=(10,0))
+    rad_text.grid(row=14, column=1, sticky="w", pady=(10,0))
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
     # Pestañas de resultados
@@ -4570,9 +4594,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # ——————————————————————————————
         self.lbl_saludo = QtWidgets.QLabel(f"Bienvenido, {first_name} {last_name}")
         self.lbl_saludo.setAlignment(QtCore.Qt.AlignCenter)
-        # Dejamos un color “por defecto neutral” aquí; lo ajustaremos en apply_theme
+        # Color inicial se ajustará luego en apply_theme
         self.lbl_saludo.setStyleSheet("""
-            color: #FFFFFF;              /* inicialmente blanco, asumiendo tema oscuro */
+            color: #FFFFFF;              /* placeholder, será reemplazado */
             font-size: 28px;
             font-weight: 600;
             background: transparent;
@@ -4713,27 +4737,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         """
         if hasattr(self, "cmb_role"):
             if theme == "light":
-                # En tema oscuro, background blanco y texto negro
-                self.cmb_role.setStyleSheet("""
-                    QComboBox {
-                        background-color: rgba(255, 255, 255, 150);
-                        color: #000000;
-                        border-radius: 10px;
-                        padding: 8px 16px;
-                        font-size: 14px;
-                        font-weight: bold;
-                    }
-                    QComboBox::drop-down { border: none; }
-
-                    /* Cuando se abra la lista desplegable, que el fondo también sea blanco y texto negro */
-                    QComboBox QAbstractItemView {
-                        background-color: #FFFFFF;
-                        color: #000000;
-                        selection-background-color: #E0E0E0;
-                    }
-                """)
-            else:
-                # En tema claro, background negro y texto blanco
+                # Fondo oscuro semitransparente y texto blanco
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
                         background-color: rgba(0, 0, 0, 150);
@@ -4745,26 +4749,46 @@ class DashboardWindow(QtWidgets.QMainWindow):
                     }
                     QComboBox::drop-down { border: none; }
 
-                    /* Cuando se abra la lista desplegable, que el fondo también sea negro y texto blanco */
+                    /* Cuando se abra la lista desplegable, que el fondo también sea blanco y texto negro */
                     QComboBox QAbstractItemView {
                         background-color: #000000;
                         color: #FFFFFF;
                         selection-background-color: #303030;
                     }
                 """)
+            else:
+                # Fondo claro semitransparente y texto negro
+                self.cmb_role.setStyleSheet("""
+                    QComboBox {
+                        background-color: rgba(255, 255, 255, 150);
+                        color: #000000;
+                        border-radius: 10px;
+                        padding: 8px 16px;
+                        font-size: 14px;
+                        font-weight: bold;
+                    }
+                    QComboBox::drop-down { border: none; }
+
+                    /* Cuando se abra la lista desplegable, que el fondo también sea negro y texto blanco */
+                    QComboBox QAbstractItemView {
+                        background-color: #FFFFFF;
+                        color: #000000;
+                        selection-background-color: #E0E0E0;
+                    }
+                """)
         if hasattr(self, "lbl_saludo"):
             if theme == "light":
-                # Texto blanco sobre fondo oscuro
+                # Texto negro sobre fondo claro
                 self.lbl_saludo.setStyleSheet("""
-                    color: #FFFFFF;
+                    color: #000000;
                     font-size: 28px;
                     font-weight: 600;
                     background: transparent;
                 """)
             else:
-                # Texto negro sobre fondo claro
+                # Texto blanco sobre fondo oscuro
                 self.lbl_saludo.setStyleSheet("""
-                    color: #000000;
+                    color: #FFFFFF;
                     font-size: 28px;
                     font-weight: 600;
                     background: transparent;
@@ -4945,12 +4969,11 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_logout(self):
         """Cierra el dashboard y relanza el login."""
+        settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+        settings.setValue("theme", self.theme)
         self.close()
         script = resource_path("login_app.py")
-        subprocess.Popen(
-            [sys.executable, script],
-            cwd=os.path.dirname(script)
-        )
+        subprocess.Popen([sys.executable, script], cwd=os.path.dirname(script))
 
     # ——————————————————————————————
     # Métodos de acción (stubs; implementa tu lógica aquí)
