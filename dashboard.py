@@ -5182,6 +5182,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         subprocess.Popen([sys.executable, script, "--crear-usuario"])
 
     def on_iniciar_digitacion(self):
+
         """Lanza la ventana de digitación dentro del mismo proceso"""
         iniciar_tipificacion(self._tk_root, self.conn, self.user_id)
 
@@ -5206,7 +5207,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         modificar_estado_usuario(self._tk_root, self.conn)
 
     def on_modificar_radicado(self):
-        """Muestra la interfaz para modificar radicados"""
+        """Muestra la interfaz para modificar radicados""" 
         modificar_radicado(self._tk_root, self.conn, self.user_id)
 
 
