@@ -1765,7 +1765,8 @@ def modificar_radicado(parent_root, conn, user_id):
         ctk.CTkLabel(cell, text=label_text, anchor="w",
                      font=ctk.CTkFont(weight="bold")).pack(fill="x")
         ctk.CTkEntry(cell, textvariable=var, state="readonly").pack(fill="x")
-    scroll = ctk.CTkScrollableFrame(win, fg_color="#2b2b2b")
+    # fondo del contenedor de los campos debe cambiar con el tema
+    scroll = ctk.CTkScrollableFrame(win, fg_color=color_card)
     scroll.pack(fill="both", expand=True, padx=20, pady=(0,10))
     for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
 
@@ -3519,6 +3520,7 @@ def ver_progreso(root, conn):
     buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
     buscar_usr.grid(row=9, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
+    
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=10, column=0, sticky="w")
     ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=100).grid(row=10, column=1, sticky="w")
     ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=10, column=2, sticky="e")
@@ -5229,7 +5231,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
             ctk.CTkLabel(win, text="Tipo de Paquete:", text_color=fg,
                         fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
-            opt_bg = "#000000" if theme == "light" else "#FFFFFF"
+            opt_bg = "#2b2b2b" if theme == "light" else "#e0e0e0"
             opt_fg = "#FFFFFF" if theme == "light" else "#000000"
 
             ctk.CTkOptionMenu(
