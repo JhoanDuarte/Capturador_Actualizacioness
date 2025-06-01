@@ -19,7 +19,7 @@ from tqdm import tqdm
 from PyQt5.QtWidgets import QMessageBox,QGraphicsDropShadowEffect,QGraphicsBlurEffect
 from PyQt5.QtCore import QRegularExpression
 from PyQt5.QtGui  import QRegularExpressionValidator
-from PyQt5.QtGui import QIntValidator
+
 
 
 # — Librerías estándar —
@@ -33,8 +33,6 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from db_connection import conectar_sql_server
 from dashboard import DashboardWindow
 
-from version import __version__ as local_version
-
 APP_NAME = "Dashboard_Capturador_Datos"
 UPDATE_JSON_URL = "https://raw.githubusercontent.com/JhoanDuarte/Capturador_Actualizacioness/main/latest.json"
 
@@ -43,11 +41,6 @@ try:
 except ImportError:
     local_version = "1.2.7"  # Si no hay versión, se forzará la actualización
 
-import os
-import sys
-import requests
-import tkinter as tk
-from tkinter import messagebox
 
 def get_target_zip_path(version):
     # Misma lógica de antes
@@ -123,43 +116,30 @@ def check_for_update_and_exit_if_needed():
         os._exit(0)
 
 def run_dashboard_from_args():
-    # Si estamos en el exe congelado y el primer arg es dashboard.py
-    if getattr(sys, 'frozen', False) \
+    """Si la aplicación se ejecuta con los argumentos de Dashboard,
+    inicia la ventana principal directamente y finaliza el proceso
+    de login."""
+
+    if getattr(sys, "frozen", False) \
        and len(sys.argv) >= 2 \
        and os.path.basename(sys.argv[1]).lower() == "dashboard.py":
-        # argv[2], [3], [4] son user_id, first_name, last_name
+        # argv[2], [3] y [4] son user_id, first_name y last_name
         try:
-            uid   = int(sys.argv[2])
-            fn    = sys.argv[3]
-            ln    = sys.argv[4]
+            uid = int(sys.argv[2])
+            fn  = sys.argv[3]
+            ln  = sys.argv[4]
         except Exception:
-            print("Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>")
+            print(
+                "Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>"
+            )
             sys.exit(1)
-        # Conectamos
-        conn = conectar_sql_server('DB_DATABASE')
-        if conn is None:
-            raise RuntimeError("No se pudo conectar a la BD.")
-        # Creamos root y abrimos el dashboard
-        def run_dashboard_from_args():
-            if getattr(sys, 'frozen', False) \
-            and len(sys.argv) >= 2 and os.path.basename(sys.argv[1]).lower() == "dashboard.py":
-                try:
-                    uid = int(sys.argv[2])
-                    fn  = sys.argv[3]
-                    ln  = sys.argv[4]
-                except Exception:
-                    print("Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>")
-                    sys.exit(1)
 
-                # Arrancamos Qt en vez de CTk
-                app = QtWidgets.QApplication(sys.argv)
-                window = DashboardWindow(uid, fn, ln)   # sin parent=…
-                window.show()
-                sys.exit(app.exec_())
+        app = QtWidgets.QApplication(sys.argv)
+        window = DashboardWindow(uid, fn, ln)
+        window.show()
+        sys.exit(app.exec_())
 
 
-# Ejecutamos la detección *antes* de definir nada más
-run_dashboard_from_args()
 
 
 # Conexión a BD
@@ -880,6 +860,7 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
 
 if __name__ == "__main__":
     check_for_update_and_exit_if_needed()  # 👈 Esto va PRIMERO. Si no está actualizado, se sale.
+    run_dashboard_from_args()
     app = QtWidgets.QApplication(sys.argv)
     w = LoginWindow()
     w.show()
