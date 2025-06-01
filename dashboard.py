@@ -374,16 +374,16 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
-        entry_fg_color   = "white"    # campos en blanco para contrastar
-        entry_text_color = "black"    # texto negro en las entradas
+        entry_fg_color   = "#424242"  # gris oscuro en vez de blanco
+        entry_text_color = "white"    # texto blanco dentro de la entrada
         placeholder_color= "#555555"  # gris medio para placeholder
     else:
         # tema “light-blue”
         color_container   = "#F8F8F8"  # gris clarito casi blanco
         color_card        = "#EAEAEA"  # un pelín más oscuro que container
         fg_text_color    = "black"    # todo texto en negro
-        entry_fg_color   = "black"    # campos en negro
-        entry_text_color = "white"    # texto blanco dentro de CTkEntry
+        entry_fg_color   = "white"    # campos claros en tema light
+        entry_text_color = "black"    # texto negro dentro de CTkEntry
         placeholder_color= "#AAAAAA"  # gris para placeholder
         
     entry_radicado_var = tk.StringVar()
@@ -1781,16 +1781,16 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
-        entry_fg_color   = "white"    # campos blancos
-        entry_text_color = "black"    # texto negro
+        entry_fg_color   = "#424242"  # gris oscuro armonioso
+        entry_text_color = "white"    # texto blanco en entradas
         placeholder_color= "#555555"  # gris medio
     else:
         # tema “light-blue”
         color_container   = "#F8F8F8"  # gris clarito casi blanco
         color_card        = "#EAEAEA"  # un pelín más oscuro que container
         fg_text_color    = "black"    # todo texto en negro
-        entry_fg_color   = "black"    # campos negros
-        entry_text_color = "white"    # texto blanco
+        entry_fg_color   = "white"    # campos blancos en tema light
+        entry_text_color = "black"    # texto negro
         placeholder_color= "#AAAAAA"  # gris para placeholder
         
     entry_radicado_var = tk.StringVar()
