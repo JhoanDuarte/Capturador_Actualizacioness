@@ -4761,81 +4761,28 @@ class DashboardWindow(QtWidgets.QMainWindow):
         subprocess.Popen([sys.executable, script, "--crear-usuario"])
 
     def on_iniciar_digitacion(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--iniciar-tipificacion",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        """Abre la ventana de digitación dentro del mismo proceso."""
+        iniciar_tipificacion(self._tk_root, self.conn, self.user_id)
 
     def on_iniciar_calidad(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--iniciar-calidad",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        """Abre la ventana de validación de calidad sin lanzar otro proceso."""
+        iniciar_calidad(self._tk_root, self.conn, self.user_id)
 
     def on_ver_progreso(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--ver-progreso",
-            str(self)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        """Muestra el progreso actual de los paquetes."""
+        ver_progreso(self._tk_root, self.conn)
 
     def on_exportar_paquete(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--exportar-paquete",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        exportar_paquete(self._tk_root, self.conn)
 
     def on_actualizar_datos(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--actualizar-datos",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        actualizar_usuario(self._tk_root, self.conn, self.user_id)
 
     def on_modificar_estado_usuario(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--desactivar-usuario",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        modificar_estado_usuario(self._tk_root, self.conn)
     
     def on_modificar_radicado(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--modificar-radicado",
-            str(self.user_id)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        modificar_radicado(self._tk_root, self.conn, self.user_id)
 
 
 if __name__ == "__main__":
