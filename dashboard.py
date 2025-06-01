@@ -3420,12 +3420,12 @@ def ver_progreso(root, conn):
     # — Creación de ventana principal y layout de filtros/pestañas —
     win = ctk.CTkToplevel(root)
     win.title("Ver Progreso de Paquetes")
-    win.minsize(900, 500)
+    win.minsize(1080, 500)
     win.grab_set()
     win.protocol("WM_DELETE_WINDOW", lambda: safe_destroy(win))
 
     # -- Layout general: barra lateral de filtros + contenido central --
-    sidebar = ctk.CTkScrollableFrame(win, width=260)
+    sidebar = ctk.CTkScrollableFrame(win, width=320)
     sidebar.pack(side="left", fill="y", padx=(20, 10), pady=20)
     for i in range(3):
         sidebar.grid_columnconfigure(i, weight=1)
@@ -3492,7 +3492,7 @@ def ver_progreso(root, conn):
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=7, column=0, sticky="w")
     ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=80).grid(row=7, column=1)
     ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=2, sticky="e")
-    estado_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
+    estado_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
     estado_frame.grid(row=8, column=0, columnspan=3, sticky="w")
     estado_vars = {}
     estado_checks = {}
@@ -3526,7 +3526,7 @@ def ver_progreso(root, conn):
     ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=80).grid(row=10, column=1)
     ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=10, column=2, sticky="e")
 
-    user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
+    user_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
     user_frame.grid(row=11, column=0, columnspan=3, sticky="w")
     user_vars = {}
     user_checks = {}
@@ -3539,7 +3539,7 @@ def ver_progreso(root, conn):
         
 
     ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=12, column=0, sticky="nw", pady=(10,0))
-    rad_text = ctk.CTkTextbox(sidebar, width=200, height=100)
+    rad_text = ctk.CTkTextbox(sidebar, width=240, height=100)
     rad_text.grid(row=12, column=1, columnspan=2, sticky="w", pady=(10,0))
 
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
