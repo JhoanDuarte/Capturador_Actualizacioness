@@ -2902,43 +2902,44 @@ def ver_progreso(root, conn):
             ctk.CTkLabel(frame1, text=est).grid(row=i, column=0, sticky="w", padx=5, pady=2)
             ctk.CTkLabel(frame1, text=cnt).grid(row=i, column=1, sticky="e", padx=5, pady=2)
 
-        # Calcula total de HECHOS (STATUS_ID 3 + 4)
+        # --- Totales generales ---
         cur2 = conn.cursor()
-        sql_hechos = (
-            "SELECT SUM(CASE WHEN a.STATUS_ID IN (3,4) THEN 1 ELSE 0 END) "
+        sql_tot_asig = (
+            "SELECT COUNT(*) "
             "FROM ASIGNACION_TIPIFICACION a "
-            "JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "JOIN USERS u ON t.USER_ID = u.ID "
-            "JOIN STATUS s ON a.STATUS_ID = s.ID "
-            f"WHERE {where}"
+            "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
+            "LEFT JOIN USERS u        ON t.USER_ID        = u.ID "
+            "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
+            f"WHERE {where} AND a.STATUS_ID <> 1"
         )
-        cur2.execute(sql_hechos, params)
-        total_hechos = cur2.fetchone()[0] or 0
+        cur2.execute(sql_tot_asig, params)
+        total_asignados = cur2.fetchone()[0] or 0
         cur2.close()
 
+        cur3 = conn.cursor()
+        sql_tot_all = (
+            "SELECT COUNT(*) "
+            "FROM ASIGNACION_TIPIFICACION a "
+            "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
+            "LEFT JOIN USERS u        ON t.USER_ID        = u.ID "
+            "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
+            f"WHERE {where}"
+        )
+        cur3.execute(sql_tot_all, params)
+        total_global = cur3.fetchone()[0] or 0
+        cur3.close()
+
         fila_final = len(rows1)
-        ctk.CTkLabel(frame1, text="TOTAL", font=("Arial", 12, "bold")) \
+        ctk.CTkLabel(frame1, text="TOTAL ASIGNADOS", font=("Arial", 12, "bold")) \
             .grid(row=fila_final, column=0, sticky="w", padx=5, pady=4)
-        ctk.CTkLabel(frame1, text=str(total_hechos), font=("Arial", 12, "bold")) \
+        ctk.CTkLabel(frame1, text=str(total_asignados), font=("Arial", 12, "bold")) \
             .grid(row=fila_final, column=1, sticky="e", padx=5, pady=4)
 
-        # Conteo de registros sin asignar (STATUS_ID = 1)
-        cur_na = conn.cursor()
-        sql_na = "SELECT COUNT(*) FROM ASIGNACION_TIPIFICACION WHERE NUM_PAQUETE = %s"
-        params_na = [pkg_sel]
-        if tipo_sel:
-            sql_na += " AND TIPO_PAQUETE = %s"
-            params_na.append(tipo_sel)
-        sql_na += " AND STATUS_ID = 1"
-        cur_na.execute(sql_na, params_na)
-        sin_asignar = cur_na.fetchone()[0] or 0
-        cur_na.close()
+        ctk.CTkLabel(frame1, text="TOTAL GENERAL", font=("Arial", 12, "bold")) \
+            .grid(row=fila_final + 1, column=0, sticky="w", padx=5, pady=4)
+        ctk.CTkLabel(frame1, text=str(total_global), font=("Arial", 12, "bold")) \
+            .grid(row=fila_final + 1, column=1, sticky="e", padx=5, pady=4)
 
-        fila_final += 1
-        ctk.CTkLabel(frame1, text="SIN ASIGNAR", font=("Arial", 12, "bold")) \
-            .grid(row=fila_final, column=0, sticky="w", padx=5, pady=4)
-        ctk.CTkLabel(frame1, text=str(sin_asignar), font=("Arial", 12, "bold")) \
-            .grid(row=fila_final, column=1, sticky="e", padx=5, pady=4)
 
         # — Cálculo del intervalo promedio general entre tipificaciones —
         cur_int = conn.cursor()
@@ -2966,7 +2967,7 @@ def ver_progreso(root, conn):
         ctk.CTkLabel(frame1,
             text=f"Intervalo promedio general: {avg_int_td}",
             font=("Arial", 10, "italic")
-        ).grid(row=fila_final + 1, column=0, columnspan=2, sticky="w", padx=5, pady=4)
+        ).grid(row=fila_final + 2, column=0, columnspan=2, sticky="w", padx=5, pady=4)
 
 
         # — Pestaña "Por Usuario" —
@@ -3134,28 +3135,46 @@ def ver_progreso(root, conn):
         if where is None:
             return
 
-        # Detectamos si es paquete CALIDAD
+        # Detectamos tipo de paquete y campos configurados
         tipo = var_tipo_paquete.get().strip().upper()
-        is_calidad = (tipo == "CALIDAD")
+        cur_f = conn.cursor()
+        cur_f.execute(
+            "SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE=%s AND tipo_paquete=%s",
+            (int(pkg_var.get()), tipo)
+        )
+        campos_set = {r[0] for r in cur_f.fetchall()}
+        cur_f.close()
 
         # 1) Definimos dinámicamente las columnas a SELECT
-        select_cols = [
-            "a.RADICADO",
-            "CONVERT(varchar(10), t.FECHA_SERVICIO, 103) AS FECHA_SERVICIO",
-            "CONVERT(varchar(10), t.FECHA_SERVICIO_FINAL, 103) AS FECHA_SERVICIO_FINAL",
-            "d.AUTORIZACION",
-            "d.CODIGO_SERVICIO",
-            "d.CANTIDAD",
-            "d.VLR_UNITARIO",
-            "t.DIAGNOSTICO",
-            "COALESCE(td.NAME, '')  AS TipoDocumento",
-            "t.NUM_DOC              AS NumeroDocumento",
-            "d.COPAGO               AS CM_COPAGO",
-            "d.OBSERVACION",
-            "COALESCE(s.NAME, '')   AS ESTADO",
-            "t.fecha_creacion       AS FechaDigitacion",
+        select_cols = ["a.RADICADO"]
+        if "FECHA_SERVICIO" in campos_set:
+            select_cols.append("t.FECHA_SERVICIO AS FECHA_SERVICIO")
+        if "FECHA_SERVICIO_FINAL" in campos_set:
+            select_cols.append("t.FECHA_SERVICIO_FINAL AS FECHA_SERVICIO_FINAL")
+        if "AUTORIZACION" in campos_set:
+            select_cols.append("d.AUTORIZACION")
+        if "CODIGO_SERVICIO" in campos_set:
+            select_cols.append("d.CODIGO_SERVICIO")
+        if "CANTIDAD" in campos_set:
+            select_cols.append("d.CANTIDAD")
+        if "VLR_UNITARIO" in campos_set:
+            select_cols.append("d.VLR_UNITARIO")
+        if "DIAGNOSTICO" in campos_set:
+            select_cols.append("t.DIAGNOSTICO")
+        if "TIPO_DOC_ID" in campos_set:
+            select_cols.append("COALESCE(td.NAME, '') AS TipoDocumento")
+        if "NUM_DOC" in campos_set:
+            select_cols.append("t.NUM_DOC AS NumeroDocumento")
+        if "COPAGO" in campos_set:
+            select_cols.append("d.COPAGO AS CM_COPAGO")
+        if "OBSERVACION" in campos_set:
+            select_cols.append("d.OBSERVACION")
+        select_cols.append("COALESCE(s.NAME, '') AS ESTADO")
+        # Campos comunes al final
+        select_cols.append("t.fecha_creacion AS FechaDigitacion")
+        select_cols.append(
             "CONCAT(u.FIRST_NAME, ' ', u.LAST_NAME, ' - ', CAST(u.NUM_DOC AS varchar(20))) AS Funcionario"
-        ]
+        )
 
         sql_export = (
             "SELECT " + ", ".join(select_cols) + " "
@@ -3713,31 +3732,59 @@ def exportar_paquete(root, conn):
         lines = txt.get("1.0", "end").splitlines()
         radicados = sorted({int(L) for L in lines if L.strip().isdigit()})
 
-        # 8) Construyo la SQL base (sin WHERE)
-        base_sql = """
-            SELECT
-              a.RADICADO                                   AS RADICADO,
-              CONVERT(varchar(10), t.FECHA_SERVICIO, 103)  AS FECHA_SERVICIO,
-              CONVERT(varchar(10), t.FECHA_SERVICIO_FINAL, 103) AS FECHA_SERVICIO_FINAL,
-              d.AUTORIZACION                               AS AUTORIZACION,
-              d.CODIGO_SERVICIO                            AS CODIGO_SERVICIO,
-              d.CANTIDAD                                   AS CANTIDAD,
-              d.VLR_UNITARIO                               AS VLR_UNITARIO,
-              t.DIAGNOSTICO                                AS DIAGNOSTICO,
-              COALESCE(td.NAME, '')                        AS TipoDocumento,
-              t.NUM_DOC                                    AS NumeroDocumento,
-              d.COPAGO                                     AS CM_COPAGO,
-              d.OBSERVACION                                AS OBSERVACION,
-              COALESCE(s.NAME, '')                         AS ESTADO,
-              t.fecha_creacion                             AS FechaDigitacion,
-              u2.NUM_DOC                                   AS Funcionario
-            FROM ASIGNACION_TIPIFICACION a
-            JOIN TIPIFICACION t             ON t.ASIGNACION_ID = a.RADICADO
-            LEFT JOIN TIPIFICACION_DETALLES d    ON d.TIPIFICACION_ID = t.ID
-            LEFT JOIN USERS u2                   ON u2.ID            = t.USER_ID
-            LEFT JOIN TIPO_DOC td                ON td.ID            = t.TIPO_DOC_ID
-            LEFT JOIN STATUS s                   ON s.ID             = a.STATUS_ID
-        """
+
+        # 8) Determino tipo y campos configurados
+        cur_t = conn.cursor()
+        cur_t.execute(
+            "SELECT TOP 1 TIPO_PAQUETE FROM ASIGNACION_TIPIFICACION WHERE NUM_PAQUETE=%s",
+            (pkg,)
+        )
+        tipo_pkg = (cur_t.fetchone() or [""])[0]
+        cur_t.close()
+
+        cur_c = conn.cursor()
+        cur_c.execute(
+            "SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE=%s AND tipo_paquete=%s",
+            (pkg, tipo_pkg)
+        )
+        campos_set = {r[0] for r in cur_c.fetchall()}
+        cur_c.close()
+
+        # 9) Construyo SELECT dinámico
+        select_cols = ["a.RADICADO"]
+        if "FECHA_SERVICIO" in campos_set:
+            select_cols.append("CONVERT(varchar(10), t.FECHA_SERVICIO, 103) AS FECHA_SERVICIO")
+        if "FECHA_SERVICIO_FINAL" in campos_set:
+            select_cols.append("CONVERT(varchar(10), t.FECHA_SERVICIO_FINAL, 103) AS FECHA_SERVICIO_FINAL")
+        if "AUTORIZACION" in campos_set:
+            select_cols.append("d.AUTORIZACION")
+        if "CODIGO_SERVICIO" in campos_set:
+            select_cols.append("d.CODIGO_SERVICIO AS COD_SERVICIO")
+        if "CANTIDAD" in campos_set:
+            select_cols.append("d.CANTIDAD")
+        if "VLR_UNITARIO" in campos_set:
+            select_cols.append("d.VLR_UNITARIO")
+        if "DIAGNOSTICO" in campos_set:
+            select_cols.append("t.DIAGNOSTICO")
+        if "TIPO_DOC_ID" in campos_set:
+            select_cols.append("td.NAME AS TipoDocumento")
+        if "NUM_DOC" in campos_set:
+            select_cols.append("t.NUM_DOC AS NumeroDocumento")
+        if "COPAGO" in campos_set:
+            select_cols.append("d.COPAGO AS CM_COPAGO")
+        if "OBSERVACION" in campos_set:
+            select_cols.append("d.OBSERVACION")
+        select_cols.append("t.fecha_creacion AS FechaDigitacion")
+        select_cols.append("u2.NUM_DOC AS Funcionario")
+
+        base_sql = (
+            "SELECT " + ", ".join(select_cols) + " "
+            "FROM ASIGNACION_TIPIFICACION a "
+            "JOIN TIPIFICACION t             ON t.ASIGNACION_ID        = a.RADICADO "
+            "LEFT JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID      = t.ID "
+            "LEFT JOIN USERS u2               ON u2.ID                 = t.USER_ID "
+            "LEFT JOIN TIPO_DOC td            ON td.ID                 = t.TIPO_DOC_ID "
+        )
 
         # 9) Elijo la cláusula WHERE según si hay radicados
         if radicados:
