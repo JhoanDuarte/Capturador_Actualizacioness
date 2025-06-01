@@ -59,15 +59,67 @@ def safe_destroy(win):
         pass
     win.destroy()
 
+_icon_cache = {}
+
+
 def load_icon_from_url(url, size):
-    resp = requests.get(url)
-    resp.raise_for_status()
-    # convierte SVG bytes a PNG bytes
-    png_bytes = cairosvg.svg2png(bytestring=resp.content,
-                                 output_width=size[0],
-                                 output_height=size[1])
-    img = Image.open(BytesIO(png_bytes))
-    return ctk.CTkImage(light_image=img, dark_image=img, size=size)
+    """Download an SVG icon, convert to PNG and cache the result."""
+    key = (url, size)
+    if key in _icon_cache:
+        return _icon_cache[key]
+
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        png_bytes = cairosvg.svg2png(
+            bytestring=resp.content,
+            output_width=size[0],
+            output_height=size[1],
+        )
+        img = Image.open(BytesIO(png_bytes))
+    except Exception:
+        # fallback: blank image if download fails
+        img = Image.new("RGBA", size, (0, 0, 0, 0))
+
+    icon = ctk.CTkImage(light_image=img, dark_image=img, size=size)
+    _icon_cache[key] = icon
+    return icon
+
+
+# Preload commonly used icons in a background thread so windows show up faster.
+_PRELOAD_ICONS = [
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/user-circle.svg", (80, 80)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/calendar.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/id-card.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/hashtag.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/stethoscope.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/file-invoice.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/tools.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/list-ol.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/dollar-sign.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/coins.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/align-left.svg", (20, 20)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/save.svg", (18, 18)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/plus-circle.svg", (18, 18)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/trash-alt.svg", (18, 18)),
+    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/sign-out-alt.svg", (18, 18)),
+]
+
+
+def _start_icon_prefetch():
+    import threading
+
+    def _prefetch():
+        for _url, _size in _PRELOAD_ICONS:
+            try:
+                load_icon_from_url(_url, _size)
+            except Exception:
+                pass
+
+    threading.Thread(target=_prefetch, daemon=True).start()
+
+
+_start_icon_prefetch()
 
 
 def apply_ctk_theme_from_settings():
