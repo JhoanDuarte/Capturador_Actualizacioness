@@ -1435,14 +1435,14 @@ def modificar_radicado(parent_root, conn, user_id):
         color_container  = "#1e1e1e"
         color_card       = "#2b2b2b"
         fg_text_color    = "white"
-        entry_fg_color   = "#424242"
+        entry_fg_color   = "#424242"  # gris oscuro
         entry_text_color = "white"
         placeholder_color= "#BBBBBB"
     else:
         color_container  = "#F8F8F8"
         color_card       = "#EAEAEA"
         fg_text_color    = "black"
-        entry_fg_color   = "white"
+        entry_fg_color   = "white"    # campos claros
         entry_text_color = "black"
         placeholder_color= "#666666"
 
@@ -1667,7 +1667,16 @@ def modificar_radicado(parent_root, conn, user_id):
 
                 ctk.CTkLabel(scroll, text=label + ":", font=ctk.CTkFont(weight="bold"))\
                     .grid(row=row, column=0, sticky="w", padx=5, pady=5)
-                ent = ctk.CTkEntry(scroll, textvariable=var, width=200)
+                ent = ctk.CTkEntry(
+                    scroll,
+                    textvariable=var,
+                    width=200,
+                    fg_color=entry_fg_color,
+                    text_color=entry_text_color,
+                    placeholder_text_color=placeholder_color,
+                    border_color=fg_text_color,
+                    border_width=1,
+                )
 
                 ent.grid(row=row, column=1, sticky="ew", padx=5, pady=5)
                 dv[key] = var
@@ -1756,7 +1765,7 @@ def modificar_radicado(parent_root, conn, user_id):
         ctk.CTkLabel(cell, text=label_text, anchor="w",
                      font=ctk.CTkFont(weight="bold")).pack(fill="x")
         ctk.CTkEntry(cell, textvariable=var, state="readonly").pack(fill="x")
-    scroll = ctk.CTkScrollableFrame(win, fg_color="#2b2b2b")
+    scroll = ctk.CTkScrollableFrame(win, fg_color=color_card)
     scroll.pack(fill="both", expand=True, padx=20, pady=(0,10))
     for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
 
@@ -3479,9 +3488,9 @@ def ver_progreso(root, conn):
     buscar_est.bind("<KeyRelease>", _filtrar_est)
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=7, column=0, sticky="w")
     ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=1, sticky="e")
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=120).grid(row=8, column=0, columnspan=2, pady=(5,0))
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=120).grid(row=7, column=2, padx=(5,0))
     estado_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    estado_frame.grid(row=9, column=0, columnspan=2, sticky="w")
+    estado_frame.grid(row=8, column=0, columnspan=3, sticky="w")
     estado_vars = {}
     estado_checks = {}
     for est in estados:
@@ -3500,8 +3509,6 @@ def ver_progreso(root, conn):
                 estado_vars[est].set(True)
         actualizar_tabs()
 
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=120)\
-        .grid(row=9, column=0, columnspan=2, pady=(2,0))
 
     # Filtro de usuarios
     cur = conn.cursor()
@@ -3514,10 +3521,9 @@ def ver_progreso(root, conn):
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=11, column=0, sticky="w")
     ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=11, column=1, sticky="e")
-
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=120).grid(row=12, column=0, columnspan=2, pady=(5,0))
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=120).grid(row=11, column=2, padx=(5,0))
     user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    user_frame.grid(row=13, column=0, columnspan=2, sticky="w")
+    user_frame.grid(row=12, column=0, columnspan=3, sticky="w")
 
     user_vars = {}
     user_checks = {}
@@ -3529,9 +3535,9 @@ def ver_progreso(root, conn):
         user_checks[usr] = cb
         
 
-    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=14, column=0, sticky="nw", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=13, column=0, sticky="nw", pady=(10,0))
     rad_text = ctk.CTkTextbox(sidebar, width=200, height=100)
-    rad_text.grid(row=14, column=1, sticky="w", pady=(10,0))
+    rad_text.grid(row=13, column=1, sticky="w", pady=(10,0))
 
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
