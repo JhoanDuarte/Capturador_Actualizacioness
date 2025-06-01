@@ -4783,15 +4783,13 @@ class DashboardWindow(QtWidgets.QMainWindow):
         pass
 
     def on_ver_progreso(self):
-        import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([
-            sys.executable,
-            script,
-            "--ver-progreso",
-            str(self)          # <–– Aquí debe ir el user_id
-        ])
-        pass
+        # Abrir la ventana de progreso directamente usando el mismo Tk root
+        if not hasattr(self, "_tk_root"):
+            import tkinter as tk
+            self._tk_root = tk.Tk()
+            self._tk_root.withdraw()
+
+        ver_progreso(self._tk_root, self.conn)
 
     def on_exportar_paquete(self):
         import subprocess, os, sys
