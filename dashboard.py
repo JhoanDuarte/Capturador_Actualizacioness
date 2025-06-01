@@ -1435,15 +1435,15 @@ def modificar_radicado(parent_root, conn, user_id):
         color_container  = "#1e1e1e"
         color_card       = "#2b2b2b"
         fg_text_color    = "white"
-        entry_fg_color   = "#111111"  # casi negro, sin ser absoluto
-        entry_text_color = "white"
+        entry_fg_color   = "white"
+        entry_text_color = "black"
         placeholder_color= "#BBBBBB"
     else:
         color_container  = "#F8F8F8"
         color_card       = "#EAEAEA"
         fg_text_color    = "black"
-        entry_fg_color   = "#F5F5F5"  # casi blanco, suave
-        entry_text_color = "black"
+        entry_fg_color   = "black"
+        entry_text_color = "white"
         placeholder_color= "#666666"
 
     container = ctk.CTkFrame(win, fg_color=color_container)
@@ -1764,8 +1764,15 @@ def modificar_radicado(parent_root, conn, user_id):
         cell = ctk.CTkFrame(frm_info); cell.pack(side="left", expand=True, fill="x", padx=5)
         ctk.CTkLabel(cell, text=label_text, anchor="w",
                      font=ctk.CTkFont(weight="bold")).pack(fill="x")
-        ctk.CTkEntry(cell, textvariable=var, state="readonly").pack(fill="x")
-    # fondo del contenedor de los campos debe cambiar con el tema
+        ctk.CTkEntry(
+            cell,
+            textvariable=var,
+            state="readonly",
+            fg_color=entry_fg_color,
+            text_color=entry_text_color,
+            border_color=fg_text_color,
+            border_width=1,
+        ).pack(fill="x")
     scroll = ctk.CTkScrollableFrame(win, fg_color=color_card)
     scroll.pack(fill="both", expand=True, padx=20, pady=(0,10))
     for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
@@ -3488,10 +3495,9 @@ def ver_progreso(root, conn):
     buscar_est.grid(row=6, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_est.bind("<KeyRelease>", _filtrar_est)
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=7, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=100).grid(row=7, column=1, sticky="w")
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=2, sticky="e")
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=1, sticky="e")
     estado_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    estado_frame.grid(row=8, column=0, columnspan=3, sticky="w")
+    estado_frame.grid(row=8, column=0, columnspan=2, sticky="w")
     estado_vars = {}
     estado_checks = {}
     for est in estados:
@@ -4971,10 +4977,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
         if hasattr(self, "cmb_role"):
           
             if theme == "light":
-              
+
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
-                        background-color: rgba(0, 0, 0, 150);
+                        background-color: rgba(0, 0, 0, 120);
                         color: #FFFFFF;
                         border-radius: 10px;
                         padding: 4px 20px;
@@ -4983,17 +4989,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
                     }
                     QComboBox::drop-down { border: none; }
                     QComboBox QAbstractItemView {
-                        background-color: #000000;
+                        background-color: #2b2b2b;
                         color: #FFFFFF;
-                        selection-background-color: #303030;
+                        selection-background-color: #454545;
                     }
                 """)
-                
+
             else:
-              
+
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
-                        background-color: rgba(255, 255, 255, 150);
+                        background-color: rgba(255, 255, 255, 180);
                         color: #000000;
                         border-radius: 10px;
                         padding: 4px 20px;
@@ -5002,9 +5008,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
                     }
                     QComboBox::drop-down { border: none; }
                     QComboBox QAbstractItemView {
-                        background-color: #FFFFFF;
+                        background-color: #E0E0E0;
                         color: #000000;
-                        selection-background-color: #E0E0E0;
+                        selection-background-color: #CCCCCC;
                     }
                 """)
         if hasattr(self, "lbl_saludo"):
