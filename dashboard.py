@@ -1725,6 +1725,8 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         win.clipboard_append(entry_radicado_var.get())
         
     def load_assignment():
+        nonlocal radicado, nit, factura
+
         cur = conn.cursor()
         cur.execute("""
             SELECT TOP 1 RADICADO, NIT, FACTURA
@@ -4723,43 +4725,49 @@ class DashboardWindow(QtWidgets.QMainWindow):
         """
         if hasattr(self, "cmb_role"):
             if theme == "light":
-                # En tema oscuro, background blanco y texto negro
-                self.cmb_role.setStyleSheet("""
-                    QComboBox {
-                        background-color: rgba(255, 255, 255, 150);
-                        color: #000000;
-                        border-radius: 10px;
-                        padding: 8px 16px;
-                        font-size: 14px;
-                        font-weight: bold;
-                    }
-                    QComboBox::drop-down { border: none; }
-
-                    /* Cuando se abra la lista desplegable, que el fondo también sea blanco y texto negro */
-                    QComboBox QAbstractItemView {
-                        background-color: #FFFFFF;
-                        color: #000000;
-                        selection-background-color: #E0E0E0;
-                    }
-                """)
-            else:
-                # En tema claro, background negro y texto blanco
+                # En tema claro, usaremos fondo negro semitransparente y texto blanco
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
                         background-color: rgba(0, 0, 0, 150);
                         color: #FFFFFF;
                         border-radius: 10px;
-                        padding: 8px 16px;
+                        padding: 8px 28px 8px 28px; /* espacio simétrico */
                         font-size: 14px;
                         font-weight: bold;
                     }
-                    QComboBox::drop-down { border: none; }
+                    QComboBox::drop-down {
+                        border: none;
+                        width: 24px;                    /* para balancear el texto */
+                    }
 
-                    /* Cuando se abra la lista desplegable, que el fondo también sea negro y texto blanco */
+                    /* Desplegable también oscuro */
                     QComboBox QAbstractItemView {
                         background-color: #000000;
                         color: #FFFFFF;
                         selection-background-color: #303030;
+                    }
+                """)
+            else:
+                # En tema oscuro, fondo blanco semitransparente y texto negro
+                self.cmb_role.setStyleSheet("""
+                    QComboBox {
+                        background-color: rgba(255, 255, 255, 150);
+                        color: #000000;
+                        border-radius: 10px;
+                        padding: 8px 28px 8px 28px; /* espacio simétrico */
+                        font-size: 14px;
+                        font-weight: bold;
+                    }
+                    QComboBox::drop-down {
+                        border: none;
+                        width: 24px;                    /* para balancear el texto */
+                    }
+
+                    /* Desplegable claro */
+                    QComboBox QAbstractItemView {
+                        background-color: #FFFFFF;
+                        color: #000000;
+                        selection-background-color: #E0E0E0;
                     }
                 """)
         if hasattr(self, "lbl_saludo"):
@@ -4986,13 +4994,18 @@ class DashboardWindow(QtWidgets.QMainWindow):
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
             ctk.CTkLabel(win, text="Tipo de Paquete:", text_color=fg,
                         fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
+            opt_bg = "#000000" if theme == "light" else "#FFFFFF"
+            opt_fg = "#FFFFFF" if theme == "light" else "#000000"
+
             ctk.CTkOptionMenu(
                 win,
                 values=["DIGITACION","CALIDAD"],
                 variable=tipo_var,
-                fg_color=bg,
-                text_color=fg,
-                button_color=bg,
+
+                fg_color=opt_bg,
+                text_color=opt_fg,
+                button_color=opt_bg,
+                button_hover_color=opt_bg,
                 font=("Arial",14,"bold")
             ).pack(pady=5)
             def ok():
