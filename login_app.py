@@ -123,39 +123,28 @@ def check_for_update_and_exit_if_needed():
         os._exit(0)
 
 def run_dashboard_from_args():
-    # Si estamos en el exe congelado y el primer arg es dashboard.py
-    if getattr(sys, 'frozen', False) \
+    """Si la aplicación se ejecuta con los argumentos de Dashboard,
+    inicia la ventana principal directamente y finaliza el proceso
+    de login."""
+
+    if getattr(sys, "frozen", False) \
        and len(sys.argv) >= 2 \
        and os.path.basename(sys.argv[1]).lower() == "dashboard.py":
-        # argv[2], [3], [4] son user_id, first_name, last_name
+        # argv[2], [3] y [4] son user_id, first_name y last_name
         try:
-            uid   = int(sys.argv[2])
-            fn    = sys.argv[3]
-            ln    = sys.argv[4]
+            uid = int(sys.argv[2])
+            fn  = sys.argv[3]
+            ln  = sys.argv[4]
         except Exception:
-            print("Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>")
+            print(
+                "Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>"
+            )
             sys.exit(1)
-        # Conectamos
-        conn = conectar_sql_server('DB_DATABASE')
-        if conn is None:
-            raise RuntimeError("No se pudo conectar a la BD.")
-        # Creamos root y abrimos el dashboard
-        def run_dashboard_from_args():
-            if getattr(sys, 'frozen', False) \
-            and len(sys.argv) >= 2 and os.path.basename(sys.argv[1]).lower() == "dashboard.py":
-                try:
-                    uid = int(sys.argv[2])
-                    fn  = sys.argv[3]
-                    ln  = sys.argv[4]
-                except Exception:
-                    print("Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>")
-                    sys.exit(1)
 
-                # Arrancamos Qt en vez de CTk
-                app = QtWidgets.QApplication(sys.argv)
-                window = DashboardWindow(uid, fn, ln)   # sin parent=…
-                window.show()
-                sys.exit(app.exec_())
+        app = QtWidgets.QApplication(sys.argv)
+        window = DashboardWindow(uid, fn, ln)
+        window.show()
+        sys.exit(app.exec_())
 
 
 # Ejecutamos la detección *antes* de definir nada más
