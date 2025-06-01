@@ -20,13 +20,22 @@ a = Analysis(
     binaries=[*( (path, '.') for path in gtk_bins ), *ctk_binaries],
     datas=[
         ('.env', '.'),
-        ('Fondo.png', '.'),
-        ('Fondo2.png', '.'),
+        ('FondoLoginDark.png', '.'),
+        ('FondoLoginWhite.png', '.'),
+        ('doc_black.png', '.'),
+        ('doc_white.png', '.'),
+        ('lock_black.png', '.'),
+        ('lock_white.png', '.'),
+        ('moon.png', '.'),
+        ('sun.png', '.'),
+        ('FondoDashboardDark.png', '.'),
+        ('FondoDashboardWhite.png', '.'),
         # Qt platform plugin
         (r'C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwindows.dll', 'platforms'),
         # Dashboard y logo
         (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\dashboard.py', '.'),
-        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\LogoImg.png', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\LogoImg_dark.png', '.'),
+        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\LogoImg_light.png', '.'),
         # JSONS: Se copian al mismo directorio donde estará el EXE
         (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\latest.json', '.'),
         # versionamiento
