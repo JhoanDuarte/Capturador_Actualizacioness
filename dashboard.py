@@ -33,6 +33,7 @@ import customtkinter as ctk  # sólo esto para CustomTkinter
 from PIL import Image
 import pandas as pd
 import requests
+import math
 from tkcalendar import DateEntry
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, PageBreak, Paragraph
 from reportlab.lib.pagesizes import landscape, A4
@@ -1725,6 +1726,8 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         win.clipboard_append(entry_radicado_var.get())
         
     def load_assignment():
+        nonlocal radicado, nit, factura
+
         cur = conn.cursor()
         cur.execute("""
             SELECT TOP 1 RADICADO, NIT, FACTURA
@@ -2788,8 +2791,10 @@ def ver_progreso(root, conn):
         try:
             pkg = int(pkg_var.get())
         except ValueError:
-            messagebox.showwarning("Selección inválida", "Selecciona un paquete válido.")
-            return None, None
+            messagebox.showwarning(
+                "Selección inválida", "Selecciona un paquete válido."
+            )
+            return None, None, None, None
 
         filtros = ["a.NUM_PAQUETE = %s"]
         params = [pkg]
@@ -2834,7 +2839,7 @@ def ver_progreso(root, conn):
                 params.extend(lista)
 
         where_clause = " AND ".join(filtros)
-        return where_clause, tuple(params)
+        return where_clause, tuple(params), pkg, tipo
     
 
     # — Filtrar/mostrar solo checks de estado coincidentes —
@@ -2870,7 +2875,7 @@ def ver_progreso(root, conn):
 
     def actualizar_tabs():
         # 0) Reconstruye filtros y params
-        where, params = construir_filtros()
+        where, params, pkg_sel, tipo_sel = construir_filtros()
         if where is None:
             return
 
@@ -2934,6 +2939,7 @@ def ver_progreso(root, conn):
             .grid(row=fila_final + 1, column=0, sticky="w", padx=5, pady=4)
         ctk.CTkLabel(frame1, text=str(total_global), font=("Arial", 12, "bold")) \
             .grid(row=fila_final + 1, column=1, sticky="e", padx=5, pady=4)
+
 
         # — Cálculo del intervalo promedio general entre tipificaciones —
         cur_int = conn.cursor()
@@ -3027,25 +3033,58 @@ def ver_progreso(root, conn):
             td_user = datetime.timedelta(seconds=int(avg_sec_user))
             processed.append((id_, usuario, pendientes, procesados, con_obs, hechos, str(td_user)))
 
-        # Encabezados con la columna de intervalo
         headers = ["ID", "USUARIO", "PENDIENTES", "PROCESADOS", "CON_OBS", "TOTAL", "INTERVALO"]
-        for j, h in enumerate(headers):
-            ctk.CTkLabel(frame2, text=h, font=("Arial", 12, "bold")) \
-                .grid(row=0, column=j, padx=5, pady=4, sticky="w")
-
-        # Datos por fila
-        for i, row in enumerate(processed, start=1):
-            for j, val in enumerate(row):
-                ctk.CTkLabel(frame2, text=str(val)) \
-                    .grid(row=i, column=j, padx=5, pady=2, sticky="w")
-
-        # Total general de HECHOS
+        rows_per_page = 10
         total_general = sum(r[5] for r in processed)
-        last_row = len(processed) + 1
-        ctk.CTkLabel(frame2, text="TOTAL GENERAL", font=("Arial", 12, "bold")) \
-            .grid(row=last_row, column=0, columnspan=6, sticky="e", padx=5, pady=6)
-        ctk.CTkLabel(frame2, text=str(total_general), font=("Arial", 12, "bold")) \
-            .grid(row=last_row, column=6, sticky="w", padx=5, pady=6)
+        total_pages = max(1, math.ceil(len(processed) / rows_per_page))
+
+        table_frame = ctk.CTkFrame(frame2, fg_color="transparent")
+        table_frame.pack(fill="both", expand=True)
+
+        nav_frame = ctk.CTkFrame(frame2, fg_color="transparent")
+        nav_frame.pack(pady=4)
+
+        page_var = tk.IntVar(value=0)
+
+        def render_page():
+            for w in table_frame.winfo_children():
+                w.destroy()
+            p = page_var.get()
+            start = p * rows_per_page
+            subset = processed[start : start + rows_per_page]
+            for j, h in enumerate(headers):
+                ctk.CTkLabel(table_frame, text=h, font=("Arial", 12, "bold"))\
+                    .grid(row=0, column=j, padx=5, pady=4, sticky="w")
+            for i, row in enumerate(subset, start=1):
+                for j, val in enumerate(row):
+                    ctk.CTkLabel(table_frame, text=str(val))\
+                        .grid(row=i, column=j, padx=5, pady=2, sticky="w")
+
+        def go_prev():
+            if page_var.get() > 0:
+                page_var.set(page_var.get() - 1)
+                render_page()
+                lbl_page.configure(text=f"{page_var.get()+1}/{total_pages}")
+
+        def go_next():
+            if page_var.get() < total_pages - 1:
+                page_var.set(page_var.get() + 1)
+                render_page()
+                lbl_page.configure(text=f"{page_var.get()+1}/{total_pages}")
+
+        btn_prev = ctk.CTkButton(nav_frame, text="<", width=30, command=go_prev)
+        btn_prev.pack(side="left", padx=5)
+        lbl_page = ctk.CTkLabel(nav_frame, text=f"1/{total_pages}")
+        lbl_page.pack(side="left", padx=5)
+        btn_next = ctk.CTkButton(nav_frame, text=">", width=30, command=go_next)
+        btn_next.pack(side="left", padx=5)
+
+        render_page()
+
+        ctk.CTkLabel(frame2, text="TOTAL GENERAL", font=("Arial", 12, "bold"))\
+            .pack(pady=(10,0))
+        ctk.CTkLabel(frame2, text=str(total_general), font=("Arial", 12, "bold"))\
+            .pack()
 
 
 
@@ -3092,7 +3131,7 @@ def ver_progreso(root, conn):
 
             
     def exportar():
-        where, params = construir_filtros()
+        where, params, _, _ = construir_filtros()
         if where is None:
             return
 
@@ -3169,6 +3208,11 @@ def ver_progreso(root, conn):
         cur.execute(sql_export, params)
         rows = cur.fetchall()
         headers = [col[0] for col in cur.description]
+        rename_map = {
+            "FechaDigitacion": "FECHA DE DIGITACION",
+            "Funcionario": "FUNCIONARIO",
+        }
+        headers = [rename_map.get(h, h) for h in headers]
         cur.close()
 
         # 4) Exportar según extensión
@@ -3338,19 +3382,31 @@ def ver_progreso(root, conn):
         estado_vars[est] = var
         estado_checks[est] = cb
 
+    def _solo_visibles_est():
+        for var in estado_vars.values():
+            var.set(False)
+        for est in estados:
+            cb = estado_checks[est]
+            if cb.winfo_ismapped():
+                estado_vars[est].set(True)
+        actualizar_tabs()
+
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=120)\
+        .grid(row=9, column=0, columnspan=2, pady=(2,0))
+
     # Filtro de usuarios
     cur = conn.cursor()
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=9, column=0, sticky="w", pady=(10,5))
+    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=10, column=0, sticky="w", pady=(10,5))
     buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
-    buscar_usr.grid(row=9, column=1, sticky="w", padx=(0,10), pady=(10,5))
+    buscar_usr.grid(row=10, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=10, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=10, column=1, sticky="e")
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=11, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=11, column=1, sticky="e")
     user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    user_frame.grid(row=11, column=0, columnspan=2, sticky="w")
+    user_frame.grid(row=12, column=0, columnspan=2, sticky="w")
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -3361,9 +3417,9 @@ def ver_progreso(root, conn):
         user_checks[usr] = cb
         
      # — Filtro libre de Radicados —
-    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=12, column=0, sticky="nw", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=13, column=0, sticky="nw", pady=(10,0))
     rad_text = ctk.CTkTextbox(sidebar, width=200, height=100)
-    rad_text.grid(row=12, column=1, sticky="w", pady=(10,0))
+    rad_text.grid(row=13, column=1, sticky="w", pady=(10,0))
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
     # Pestañas de resultados
@@ -3676,6 +3732,7 @@ def exportar_paquete(root, conn):
         lines = txt.get("1.0", "end").splitlines()
         radicados = sorted({int(L) for L in lines if L.strip().isdigit()})
 
+
         # 8) Determino tipo y campos configurados
         cur_t = conn.cursor()
         cur_t.execute(
@@ -3745,6 +3802,11 @@ def exportar_paquete(root, conn):
         cur2.execute(sql, params)
         rows = cur2.fetchall()
         headers = [col[0] for col in cur2.description]
+        rename_map = {
+            "FechaDigitacion": "FECHA DE DIGITACION",
+            "Funcionario": "FUNCIONARIO",
+        }
+        headers = [rename_map.get(h, h) for h in headers]
         cur2.close()
 
         with open(path, "w", newline="", encoding="utf-8") as f:
@@ -4667,9 +4729,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
         self.cmb_role = QtWidgets.QComboBox()
         self.cmb_role.setEditable(True)
+        self.cmb_role.setFixedWidth(220)  # espacio suficiente para el texto
         le = self.cmb_role.lineEdit()
         le.setAlignment(QtCore.Qt.AlignCenter)
         le.setReadOnly(True)
+        # Márgenes extra para evitar que el texto se corte
+        le.setTextMargins(10, 0, 10, 0)
 
         # Instalamos el filtro
         f = PopupOnClickFilter(self.cmb_role)
@@ -4783,43 +4848,38 @@ class DashboardWindow(QtWidgets.QMainWindow):
         """
         if hasattr(self, "cmb_role"):
             if theme == "light":
-                # En tema oscuro, background blanco y texto negro
-                self.cmb_role.setStyleSheet("""
-                    QComboBox {
-                        background-color: rgba(255, 255, 255, 150);
-                        color: #000000;
-                        border-radius: 10px;
-                        padding: 8px 16px;
-                        font-size: 14px;
-                        font-weight: bold;
-                    }
-                    QComboBox::drop-down { border: none; }
 
-                    /* Cuando se abra la lista desplegable, que el fondo también sea blanco y texto negro */
-                    QComboBox QAbstractItemView {
-                        background-color: #FFFFFF;
-                        color: #000000;
-                        selection-background-color: #E0E0E0;
-                    }
-                """)
-            else:
-                # En tema claro, background negro y texto blanco
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
                         background-color: rgba(0, 0, 0, 150);
                         color: #FFFFFF;
                         border-radius: 10px;
-                        padding: 8px 16px;
+                        padding: 4px 20px;
                         font-size: 14px;
                         font-weight: bold;
                     }
                     QComboBox::drop-down { border: none; }
-
-                    /* Cuando se abra la lista desplegable, que el fondo también sea negro y texto blanco */
                     QComboBox QAbstractItemView {
                         background-color: #000000;
                         color: #FFFFFF;
                         selection-background-color: #303030;
+                    }
+                """)
+            else:
+                self.cmb_role.setStyleSheet("""
+                    QComboBox {
+                        background-color: rgba(255, 255, 255, 150);
+                        color: #000000;
+                        border-radius: 10px;
+                        padding: 4px 20px;
+                        font-size: 14px;
+                        font-weight: bold;
+                    }
+                    QComboBox::drop-down { border: none; }
+                    QComboBox QAbstractItemView {
+                        background-color: #FFFFFF;
+                        color: #000000;
+                        selection-background-color: #E0E0E0;
                     }
                 """)
         if hasattr(self, "lbl_saludo"):
@@ -5039,6 +5099,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         def elegir_tipo():
             win = ctk.CTkToplevel(self._tk_root)
             win.title("Seleccione Tipo de Paquete")
+            # Evitamos colores con transparencia (Tk no los soporta)
             bg = "#2f2f2f" if theme == "dark" else "#f0f0f0"
             fg = "white" if theme == "dark" else "black"
             win.configure(fg_color=bg)
@@ -5046,8 +5107,20 @@ class DashboardWindow(QtWidgets.QMainWindow):
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
             ctk.CTkLabel(win, text="Tipo de Paquete:", text_color=fg,
                         fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
-            ctk.CTkOptionMenu(win, values=["DIGITACION","CALIDAD"], variable=tipo_var,
-                            fg_color=bg).pack(pady=5)
+            opt_bg = "#000000" if theme == "light" else "#FFFFFF"
+            opt_fg = "#FFFFFF" if theme == "light" else "#000000"
+
+            ctk.CTkOptionMenu(
+                win,
+                values=["DIGITACION","CALIDAD"],
+                variable=tipo_var,
+
+                fg_color=opt_bg,
+                text_color=opt_fg,
+                button_color=opt_bg,
+                button_hover_color=opt_bg,
+                font=("Arial",14,"bold")
+            ).pack(pady=5)
             def ok():
                 aceptado.set(True)
                 win.destroy()
