@@ -3516,24 +3516,23 @@ def ver_progreso(root, conn):
                 estado_vars[est].set(True)
         actualizar_tabs()
 
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=120)\
-        .grid(row=9, column=0, columnspan=2, pady=(2,0))
 
     # Filtro de usuarios
     cur = conn.cursor()
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=10, column=0, sticky="w", pady=(10,5))
+    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=9, column=0, sticky="w", pady=(10,5))
     buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
-    buscar_usr.grid(row=10, column=1, sticky="w", padx=(0,10), pady=(10,5))
+    buscar_usr.grid(row=9, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=11, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=11, column=1, sticky="e")
+    
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=10, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=100).grid(row=10, column=1, sticky="w")
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=10, column=2, sticky="e")
 
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=120).grid(row=12, column=0, columnspan=2, pady=(5,0))
     user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
-    user_frame.grid(row=13, column=0, columnspan=2, sticky="w")
+    user_frame.grid(row=11, column=0, columnspan=3, sticky="w")
 
     user_vars = {}
     user_checks = {}
@@ -3545,9 +3544,9 @@ def ver_progreso(root, conn):
         user_checks[usr] = cb
         
 
-    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=14, column=0, sticky="nw", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=12, column=0, sticky="nw", pady=(10,0))
     rad_text = ctk.CTkTextbox(sidebar, width=200, height=100)
-    rad_text.grid(row=14, column=1, sticky="w", pady=(10,0))
+    rad_text.grid(row=12, column=1, sticky="w", pady=(10,0), columnspan=2)
 
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
@@ -5238,7 +5237,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
             ctk.CTkLabel(win, text="Tipo de Paquete:", text_color=fg,
                         fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
-            opt_bg = "#000000" if theme == "light" else "#FFFFFF"
+            opt_bg = "#2b2b2b" if theme == "light" else "#e0e0e0"
             opt_fg = "#FFFFFF" if theme == "light" else "#000000"
 
             ctk.CTkOptionMenu(
