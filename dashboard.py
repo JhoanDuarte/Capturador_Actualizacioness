@@ -349,28 +349,10 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     tipo_paquete = 'DIGITACION';
     cur.close()
 
-    # 2) Asignación aleatoria
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT TOP 1 RADICADO, NIT, FACTURA
-        FROM ASIGNACION_TIPIFICACION
-        WHERE STATUS_ID = 1
-        AND NUM_PAQUETE = %s
-        AND TIPO_PAQUETE = 'DIGITACION'
-        ORDER BY NEWID()
-    """, (pkg,))
-    row = cur.fetchone()
-    if not row:
-        messagebox.showinfo("Sin asignaciones", "No hay asignaciones pendientes.")
-        cur.close()
-        return
-    radicado, nit, factura = row
-    entry_radicado_var.set(str(radicado))
-    entry_nit_var.set(str(nit))
-    entry_factura_var.set(str(factura))
-    cur.execute("UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s", (radicado,))
-    conn.commit()
-    cur.close()
+    # 2) Variables de asignación
+    radicado = None
+    nit = None
+    factura = None
     
     cur2 = conn.cursor()
     cur2.execute("""
@@ -386,9 +368,6 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     win = ctk.CTkToplevel(parent_root)
     win.title(f"Capturador De Datos · Paquete {pkg}")
     
-    radicado = None
-    nit      = None
-    factura  = None
 
     def copy_radicado():
         win.clipboard_clear()
@@ -4834,9 +4813,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
             bg_file = "FondoDashboardWhite.png"
             
         if theme == "dark":
-            self.panel.set_overlay_color((255,255,255), alpha=155)
-        else:
             self.panel.set_overlay_color((0,0,0), alpha=155)
+        else:
+            # En tema claro, usamos un panel blanco semitransparente
+            self.panel.set_overlay_color((255,255,255), alpha=155)
 
         # — Ahora cargamos el PNG correspondiente y lo escalamos al tamaño actual —
         from PyQt5 import QtGui, QtCore
