@@ -4729,11 +4729,14 @@ class DashboardWindow(QtWidgets.QMainWindow):
                         background-color: rgba(0, 0, 0, 150);
                         color: #FFFFFF;
                         border-radius: 10px;
-                        padding: 8px 16px;
+                        padding: 8px 28px 8px 28px; /* espacio simétrico */
                         font-size: 14px;
                         font-weight: bold;
                     }
-                    QComboBox::drop-down { border: none; }
+                    QComboBox::drop-down {
+                        border: none;
+                        width: 24px;                    /* para balancear el texto */
+                    }
 
                     /* Desplegable también oscuro */
                     QComboBox QAbstractItemView {
@@ -4749,11 +4752,14 @@ class DashboardWindow(QtWidgets.QMainWindow):
                         background-color: rgba(255, 255, 255, 150);
                         color: #000000;
                         border-radius: 10px;
-                        padding: 8px 16px;
+                        padding: 8px 28px 8px 28px; /* espacio simétrico */
                         font-size: 14px;
                         font-weight: bold;
                     }
-                    QComboBox::drop-down { border: none; }
+                    QComboBox::drop-down {
+                        border: none;
+                        width: 24px;                    /* para balancear el texto */
+                    }
 
                     /* Desplegable claro */
                     QComboBox QAbstractItemView {
@@ -4986,8 +4992,18 @@ class DashboardWindow(QtWidgets.QMainWindow):
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
             ctk.CTkLabel(win, text="Tipo de Paquete:", text_color=fg,
                         fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
-            ctk.CTkOptionMenu(win, values=["DIGITACION","CALIDAD"], variable=tipo_var,
-                            fg_color=bg).pack(pady=5)
+            opt_bg = "#000000" if theme == "light" else "#FFFFFF"
+            opt_fg = "#FFFFFF" if theme == "light" else "#000000"
+            ctk.CTkOptionMenu(
+                win,
+                values=["DIGITACION","CALIDAD"],
+                variable=tipo_var,
+                fg_color=opt_bg,
+                text_color=opt_fg,
+                button_color=opt_bg,
+                button_hover_color=opt_bg,
+                font=("Arial",14,"bold")
+            ).pack(pady=5)
             def ok():
                 aceptado.set(True)
                 win.destroy()
