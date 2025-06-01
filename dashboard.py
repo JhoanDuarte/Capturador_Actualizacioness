@@ -1374,6 +1374,29 @@ def modificar_radicado(parent_root, conn, user_id):
     win.geometry("1100x650")
     win.grab_set()
 
+    # Colores según tema guardado
+    settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+    tema_actual = settings.value("theme", "dark")
+    if tema_actual == "dark":
+        color_container  = "#1e1e1e"
+        color_card       = "#2b2b2b"
+        fg_text_color    = "white"
+        entry_fg_color   = "#424242"
+        entry_text_color = "white"
+        placeholder_color= "#BBBBBB"
+    else:
+        color_container  = "#F8F8F8"
+        color_card       = "#EAEAEA"
+        fg_text_color    = "black"
+        entry_fg_color   = "white"
+        entry_text_color = "black"
+        placeholder_color= "#666666"
+
+    container = ctk.CTkFrame(win, fg_color=color_container)
+    container.pack(fill="both", expand=True)
+    card = ctk.CTkFrame(container, fg_color=color_card)
+    card.pack(fill="both", expand=True, padx=10, pady=10)
+
     # Variables
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
@@ -1535,13 +1558,17 @@ def modificar_radicado(parent_root, conn, user_id):
         for label, var, key, ctype, opts in MAIN_DEFS:
             if key not in campos_paquete:
                 continue
-            ctk.CTkLabel(scroll, text=label + ":").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+            ctk.CTkLabel(scroll, text=label + ":", text_color=fg_text_color).grid(row=row, column=0, sticky="w", padx=5, pady=5)
             if ctype == "autocomplete":
-                w = AutocompleteEntry(scroll, opts, textvariable=var, width=200)
+                w = AutocompleteEntry(scroll, opts, textvariable=var, width=200,
+                                     fg_color=entry_fg_color, text_color=entry_text_color,
+                                     placeholder_text_color=placeholder_color)
                 w.grid(row=row, column=1, sticky="ew", padx=5)
                 var.trace_add("write", lambda *a, v=var: v.set(v.get().upper()))
             elif ctype == "fullmatch":
-                w = FullMatchAutocompleteEntry(scroll, full_diag_opts, textvariable=var, width=200)
+                w = FullMatchAutocompleteEntry(scroll, full_diag_opts, textvariable=var, width=200,
+                                             fg_color=entry_fg_color, text_color=entry_text_color,
+                                             placeholder_text_color=placeholder_color)
                 w.grid(row=row, column=1, sticky="ew", padx=5)
                 var.trace_add("write", lambda *a, v=var: v.set("".join(
                     ch for ch in v.get().upper() if ch.isalnum() or ch in (" ", "-")
@@ -1550,11 +1577,15 @@ def modificar_radicado(parent_root, conn, user_id):
                     v.get().split(" - ")[0]
                 ) if v.get() in full_diag_opts else None)
             elif ctype == "date":
-                w = ctk.CTkEntry(scroll, textvariable=var, width=200, placeholder_text="DD/MM/AAAA")
+                w = ctk.CTkEntry(scroll, textvariable=var, width=200, placeholder_text="DD/MM/AAAA",
+                                 fg_color=entry_fg_color, text_color=entry_text_color,
+                                 placeholder_text_color=placeholder_color)
                 w.grid(row=row, column=1, sticky="ew", padx=5)
                 w.bind("<KeyRelease>", _format_fecha_factory(var, w))
             else:
-                w = ctk.CTkEntry(scroll, textvariable=var, width=200)
+                w = ctk.CTkEntry(scroll, textvariable=var, width=200,
+                                 fg_color=entry_fg_color, text_color=entry_text_color,
+                                 placeholder_text_color=placeholder_color)
                 w.grid(row=row, column=1, sticky="ew", padx=5)
             field_vars[key] = var
             row += 1
@@ -1563,7 +1594,7 @@ def modificar_radicado(parent_root, conn, user_id):
         for idx, detalle in enumerate(detalles_list, start=1):
             detalle_id, *campos_detalle = detalle
             ctk.CTkLabel(scroll, text=f"--- Servicio #{idx} ---",
-                         font=("Arial", 12, "bold"))\
+                         font=("Arial", 12, "bold"), text_color=fg_text_color)\
                 .grid(row=row, column=0, columnspan=2, pady=(15,5), sticky="w")
             row += 1
 
@@ -1573,8 +1604,10 @@ def modificar_radicado(parent_root, conn, user_id):
                     continue
                 value = campos_detalle[j]
                 var = tk.StringVar(value=str(value) if value is not None else "")
-                ctk.CTkLabel(scroll, text=label + ":").grid(row=row, column=0, sticky="w", padx=5, pady=5)
-                ent = ctk.CTkEntry(scroll, textvariable=var, width=200)
+                ctk.CTkLabel(scroll, text=label + ":", text_color=fg_text_color).grid(row=row, column=0, sticky="w", padx=5, pady=5)
+                ent = ctk.CTkEntry(scroll, textvariable=var, width=200,
+                                   fg_color=entry_fg_color, text_color=entry_text_color,
+                                   placeholder_text_color=placeholder_color)
                 ent.grid(row=row, column=1, sticky="ew", padx=5, pady=5)
                 dv[key] = var
                 row += 1
@@ -1582,7 +1615,7 @@ def modificar_radicado(parent_root, conn, user_id):
             detail_vars.append(dv)
 
         # 3) Botón de actualizar
-        ctk.CTkButton(win, text="Actualizar todo", command=_guardar).pack(pady=10)
+        ctk.CTkButton(card, text="Actualizar todo", command=_guardar).pack(pady=10)
 
 
     def _guardar():
@@ -1653,18 +1686,18 @@ def modificar_radicado(parent_root, conn, user_id):
         parent_root.deiconify()
 
     # Construye la UI
-    frm_search = ctk.CTkFrame(win)
+    frm_search = ctk.CTkFrame(card, fg_color="transparent")
     frm_search.pack(fill="x", padx=20, pady=(20,10))
-    ctk.CTkLabel(frm_search, text="Buscar Radicado:", anchor="w").pack(fill="x")
-    ctk.CTkEntry(frm_search, textvariable=entry_radicado_var).pack(side="left", fill="x", expand=True, pady=5)
+    ctk.CTkLabel(frm_search, text="Buscar Radicado:", anchor="w", text_color=fg_text_color, font=ctk.CTkFont(weight="bold")).pack(fill="x")
+    ctk.CTkEntry(frm_search, textvariable=entry_radicado_var, fg_color=entry_fg_color, text_color=entry_text_color, placeholder_text_color=placeholder_color).pack(side="left", fill="x", expand=True, pady=5)
     ctk.CTkButton(frm_search, text="Buscar", command=_buscar).pack(side="right", padx=(10,0))
-    frm_info = ctk.CTkFrame(win)
+    frm_info = ctk.CTkFrame(card, fg_color="transparent")
     frm_info.pack(fill="x", padx=20, pady=(0,10))
     for label_text, var in [("Radicado:", entry_radicado_var),("NIT:", entry_nit_var),("Factura:", entry_factura_var)]:
-        cell = ctk.CTkFrame(frm_info); cell.pack(side="left", expand=True, fill="x", padx=5)
-        ctk.CTkLabel(cell, text=label_text, anchor="w").pack(fill="x")
-        ctk.CTkEntry(cell, textvariable=var, state="readonly").pack(fill="x")
-    scroll = ctk.CTkScrollableFrame(win, fg_color="#2b2b2b")
+        cell = ctk.CTkFrame(frm_info, fg_color="transparent"); cell.pack(side="left", expand=True, fill="x", padx=5)
+        ctk.CTkLabel(cell, text=label_text, anchor="w", text_color=fg_text_color).pack(fill="x")
+        ctk.CTkEntry(cell, textvariable=var, state="readonly", fg_color=entry_fg_color, text_color=entry_text_color).pack(fill="x")
+    scroll = ScrollableFrame(card, fg_color=color_card)
     scroll.pack(fill="both", expand=True, padx=20, pady=(0,10))
     for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
 
