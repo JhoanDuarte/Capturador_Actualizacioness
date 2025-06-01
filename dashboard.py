@@ -43,6 +43,7 @@ from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 import traceback
 from PIL import Image, ImageDraw, ImageTk
+from threading import Thread
 
 # — Módulos propios —
 from db_connection import conectar_sql_server
@@ -59,67 +60,66 @@ def safe_destroy(win):
         pass
     win.destroy()
 
-_icon_cache = {}
 
+ICON_CACHE = {}
 
 def load_icon_from_url(url, size):
-    """Download an SVG icon, convert to PNG and cache the result."""
+    """Descarga un ícono SVG y lo convierte a CTkImage usando caché."""
     key = (url, size)
-    if key in _icon_cache:
-        return _icon_cache[key]
-
+    if key in ICON_CACHE:
+        return ICON_CACHE[key]
     try:
-        resp = requests.get(url, timeout=5)
+        resp = requests.get(url, timeout=10)
         resp.raise_for_status()
-        png_bytes = cairosvg.svg2png(
-            bytestring=resp.content,
-            output_width=size[0],
-            output_height=size[1],
-        )
+        png_bytes = cairosvg.svg2png(bytestring=resp.content,
+                                     output_width=size[0],
+                                     output_height=size[1])
         img = Image.open(BytesIO(png_bytes))
     except Exception:
-        # fallback: blank image if download fails
         img = Image.new("RGBA", size, (0, 0, 0, 0))
-
     icon = ctk.CTkImage(light_image=img, dark_image=img, size=size)
-    _icon_cache[key] = icon
+    ICON_CACHE[key] = icon
     return icon
 
 
-# Preload commonly used icons in a background thread so windows show up faster.
-_PRELOAD_ICONS = [
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/user-circle.svg", (80, 80)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/calendar.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/id-card.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/hashtag.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/stethoscope.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/file-invoice.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/tools.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/list-ol.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/dollar-sign.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/coins.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/align-left.svg", (20, 20)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/save.svg", (18, 18)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/plus-circle.svg", (18, 18)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/trash-alt.svg", (18, 18)),
-    ("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/sign-out-alt.svg", (18, 18)),
+def prefetch_icons(urls, size=(18, 18)):
+    """Pre-carga íconos en un hilo para acelerar la apertura de ventanas."""
+    def _worker():
+        for u in urls:
+            key = (u, size)
+            if key not in ICON_CACHE:
+                try:
+                    load_icon_from_url(u, size)
+                except Exception:
+                    ICON_CACHE[key] = ctk.CTkImage(
+                        light_image=Image.new("RGBA", size, (0, 0, 0, 0)),
+                        dark_image=Image.new("RGBA", size, (0, 0, 0, 0)),
+                        size=size,
+                    )
+    Thread(target=_worker, daemon=True).start()
+
+# Lista de íconos usados con frecuencia en la aplicación
+COMMON_ICONS = [
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/save.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/plus-circle.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/trash-alt.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/sign-out-alt.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/user-circle.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/calendar.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/id-card.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/hashtag.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/stethoscope.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/file-invoice.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/tools.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/list-ol.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/dollar-sign.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/coins.svg",
+    "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/align-left.svg",
 ]
 
+# Prefetch en un hilo para que las ventanas abran más rápido
+prefetch_icons(COMMON_ICONS)
 
-def _start_icon_prefetch():
-    import threading
-
-    def _prefetch():
-        for _url, _size in _PRELOAD_ICONS:
-            try:
-                load_icon_from_url(_url, _size)
-            except Exception:
-                pass
-
-    threading.Thread(target=_prefetch, daemon=True).start()
-
-
-_start_icon_prefetch()
 
 
 def apply_ctk_theme_from_settings():
@@ -635,7 +635,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             frame,
             text=label_text,
             anchor='w',
-            text_color=fg_text_color    # <–– cada Label hereda el color dinámico
+            text_color=fg_text_color,   # <–– cada Label hereda el color dinámico
+            font=ctk.CTkFont(weight='bold')
         ).pack(fill='x')
         return frame
 
@@ -1610,7 +1611,13 @@ def modificar_radicado(parent_root, conn, user_id):
         for label, var, key, ctype, opts in MAIN_DEFS:
             if key not in campos_paquete:
                 continue
-            ctk.CTkLabel(scroll, text=label + ":", text_color=fg_text_color).grid(row=row, column=0, sticky="w", padx=5, pady=5)
+                
+            ctk.CTkLabel(
+                scroll,
+                text=label + ":",
+                font=ctk.CTkFont(weight="bold")
+            ).grid(row=row, column=0, sticky="w", padx=5, pady=5)
+
             if ctype == "autocomplete":
                 w = AutocompleteEntry(scroll, opts, textvariable=var, width=200,
                                      fg_color=entry_fg_color, text_color=entry_text_color,
@@ -1656,19 +1663,16 @@ def modificar_radicado(parent_root, conn, user_id):
                     continue
                 value = campos_detalle[j]
                 var = tk.StringVar(value=str(value) if value is not None else "")
-                ctk.CTkLabel(scroll, text=label + ":", text_color=fg_text_color).grid(row=row, column=0, sticky="w", padx=5, pady=5)
-                ent = ctk.CTkEntry(scroll, textvariable=var, width=200,
-                                   fg_color=entry_fg_color, text_color=entry_text_color,
-                                   placeholder_text_color=placeholder_color)
+
+                ctk.CTkLabel(scroll, text=label + ":", font=ctk.CTkFont(weight="bold"))\
+                    .grid(row=row, column=0, sticky="w", padx=5, pady=5)
+                ent = ctk.CTkEntry(scroll, textvariable=var, width=200)
+
                 ent.grid(row=row, column=1, sticky="ew", padx=5, pady=5)
                 dv[key] = var
                 row += 1
 
             detail_vars.append(dv)
-
-        # 3) Botón de actualizar
-        ctk.CTkButton(card, text="Actualizar todo", command=_guardar).pack(pady=10)
-
 
     def _guardar():
         cur = conn.cursor()
@@ -1740,18 +1744,23 @@ def modificar_radicado(parent_root, conn, user_id):
     # Construye la UI
     frm_search = ctk.CTkFrame(card, fg_color="transparent")
     frm_search.pack(fill="x", padx=20, pady=(20,10))
-    ctk.CTkLabel(frm_search, text="Buscar Radicado:", anchor="w", text_color=fg_text_color, font=ctk.CTkFont(weight="bold")).pack(fill="x")
-    ctk.CTkEntry(frm_search, textvariable=entry_radicado_var, fg_color=entry_fg_color, text_color=entry_text_color, placeholder_text_color=placeholder_color).pack(side="left", fill="x", expand=True, pady=5)
+    ctk.CTkLabel(frm_search, text="Buscar Radicado:", anchor="w",
+                 font=ctk.CTkFont(weight="bold")).pack(fill="x")
+    ctk.CTkEntry(frm_search, textvariable=entry_radicado_var).pack(side="left", fill="x", expand=True, pady=5)
     ctk.CTkButton(frm_search, text="Buscar", command=_buscar).pack(side="right", padx=(10,0))
     frm_info = ctk.CTkFrame(card, fg_color="transparent")
     frm_info.pack(fill="x", padx=20, pady=(0,10))
     for label_text, var in [("Radicado:", entry_radicado_var),("NIT:", entry_nit_var),("Factura:", entry_factura_var)]:
-        cell = ctk.CTkFrame(frm_info, fg_color="transparent"); cell.pack(side="left", expand=True, fill="x", padx=5)
-        ctk.CTkLabel(cell, text=label_text, anchor="w", text_color=fg_text_color).pack(fill="x")
-        ctk.CTkEntry(cell, textvariable=var, state="readonly", fg_color=entry_fg_color, text_color=entry_text_color).pack(fill="x")
-    scroll = ScrollableFrame(card, fg_color=color_card)
+        cell = ctk.CTkFrame(frm_info); cell.pack(side="left", expand=True, fill="x", padx=5)
+        ctk.CTkLabel(cell, text=label_text, anchor="w",
+                     font=ctk.CTkFont(weight="bold")).pack(fill="x")
+        ctk.CTkEntry(cell, textvariable=var, state="readonly").pack(fill="x")
+    scroll = ctk.CTkScrollableFrame(win, fg_color="#2b2b2b")
     scroll.pack(fill="both", expand=True, padx=20, pady=(0,10))
     for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
+
+    # Botón final para guardar todo
+    ctk.CTkButton(win, text="Actualizar todo", command=_guardar).pack(pady=10)
 
 def iniciar_calidad(parent_root, conn, current_user_id):
     settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
@@ -5160,6 +5169,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_logout(self):
         """Cierra el dashboard y relanza el login."""
+        settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+        settings.setValue("theme", self.theme)
         self.close()
         script = resource_path("login_app.py")
         subprocess.Popen(
