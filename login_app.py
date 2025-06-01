@@ -198,52 +198,168 @@ def authenticate_user_by_doc(num_doc: str, password: str):
 class LoginWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
+        dark_ss = """
+            QWidget {
+                background-color: #2b2b2b;
+                color: #f0f0f0;
+            }
+            /* panel seminegro */
+            QFrame#centralPanel {
+                background-color: rgba(0,0,0,125);
+                border-radius: 20px;
+            }
+            /* campos de texto oscuros */
+            QLineEdit {
+                background-color: rgba(0,0,0,200);
+                color: #f0f0f0;
+                font-size: 15px;
+                border-radius: 15px;
+                padding: 8px 12px;
+            }
+            /* botones generales */
+            QPushButton {
+                background-color: #007BFF;
+                color: #ffffff;
+                border-radius: 25px;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #339CFF;
+            }
+            /* “Olvidaste tu contraseña” */
+            QPushButton#forgotBtn {
+                background-color: transparent;
+                color: #ffffff;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton#forgotBtn:hover {
+                color: #339CFF;
+            }
+        """
+        light_ss = """
+            QWidget {
+                background-color: #f4f4f9;
+                color: #000000;
+            }
+            /* panel central claro */
+            QFrame#centralPanel {
+                background-color: rgba(255,255,255,200);
+                border-radius: 20px;
+                border: 1px solid rgba(0,0,0,0.1);
+            }
+            /* campos de texto claros */
+            QLineEdit {
+                background-color: #ffffff;
+                color: #000000;
+                border: 1px solid rgba(0,0,0,0.15);
+                border-radius: 15px;
+                padding: 8px 12px;
+                font-size: 15px;
+            }
+            /* botones claros */
+            QPushButton {
+                background-color: #1E90FF;
+                color: #ffffff;
+                border-radius: 25px;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #006FDE;
+            }
+            QPushButton#forgotBtn {
+                background-color: transparent;
+                color: #000000;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton#forgotBtn:hover {
+                color: #339CFF;
+            }
+        """
+        settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+        stored = settings.value("theme", "dark")
+        self.is_dark = (stored == "dark")
+
+        # —————————————————————————
+        # 3) APLICAMOS EL CSS INICIAL
+        # —————————————————————————
+        initial_ss = dark_ss if self.is_dark else light_ss
+        QtWidgets.QApplication.instance().setStyleSheet(initial_ss)
+
+        # y fija el icono del botón
         self.setWindowTitle("Login - Capturador De Datos")
         self.resize(700, 800)
         self.center_on_screen()
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
         self.setFixedSize(self.width(), self.height())
+        
+        self.panel_rect = QtCore.QRect(160, 150, 400, 500)
 
         # Cargamos la imagen de fondo completa
         bg_path = os.path.join(os.path.dirname(__file__), "Fondo.png")
         full_pix = None
         if os.path.exists(bg_path):
-            full_pix = QtGui.QPixmap(bg_path).scaled(self.size(), QtCore.Qt.IgnoreAspectRatio)
+            pix = QtGui.QPixmap(bg_path)
+            if not pix.isNull():
+                full_pix = pix.scaled(
+                    self.size(),
+                    QtCore.Qt.IgnoreAspectRatio,
+                    QtCore.Qt.SmoothTransformation
+                )
 
-        # — Widget de fondo completo —
+        # — Carga de los fondos oscuro y claro —
+        self.bg_dark = QtGui.QPixmap(resource_path("FondoLoginDark.png"))
+        if not self.bg_dark.isNull():
+            self.bg_dark = self.bg_dark.scaled(
+                self.size(),
+                QtCore.Qt.IgnoreAspectRatio,
+                QtCore.Qt.SmoothTransformation
+            )
+
+        self.bg_light = QtGui.QPixmap(resource_path("FondoLoginWhite.png"))
+        if not self.bg_light.isNull():
+            self.bg_light = self.bg_light.scaled(
+                self.size(),
+                QtCore.Qt.IgnoreAspectRatio,
+                QtCore.Qt.SmoothTransformation
+            )
+
+        # — Widget de fondo completo (siempre creado) —
+        self.bg_label = QtWidgets.QLabel(self)
+        # Si cargaste full_pix úsalo; si no, muestra bg_dark por defecto
         if full_pix:
-            self.bg_label = QtWidgets.QLabel(self)
             self.bg_label.setPixmap(full_pix)
-            self.bg_label.setGeometry(self.rect())
+        else:
+            self.bg_label.setPixmap(self.bg_dark)
 
-        # Definimos geometría del panel (ajusta posición/tamaño si quieres)
-        panel_rect = QtCore.QRect(160, 150, 400, 500)
+        # Ocupa toda la ventana
+        self.bg_label.setGeometry(self.rect())
+        # Y lo enviamos al fondo
+        self.bg_label.lower()
 
-        # — Widget que muestra la zona difuminada —
-        if full_pix:
-            self.blurred_bg = QtWidgets.QLabel(self)
-            crop = full_pix.copy(panel_rect)
-            self.blurred_bg.setPixmap(crop)
-            self.blurred_bg.setGeometry(panel_rect)
-            blur_effect = QGraphicsBlurEffect()
-            blur_effect.setBlurRadius(15)  # intensidad del blur
-            self.blurred_bg.setGraphicsEffect(blur_effect)
+        # Zona difuminada
+        self.blurred_bg = QtWidgets.QLabel(self)
+        blur_fx = QGraphicsBlurEffect(self.blurred_bg)
+        blur_fx.setBlurRadius(15)
+        self.blurred_bg.setGraphicsEffect(blur_fx)
+
+        # Copiamos del fondo oscuro inicialmente
+        self.blurred_bg.setPixmap(self.bg_dark.copy(self.panel_rect))
+        self.blurred_bg.setGeometry(self.panel_rect)
 
         # — Panel central semitransparente —
         self.panel = QtWidgets.QFrame(self)
-        self.panel.setGeometry(panel_rect)
+        self.panel.setObjectName("centralPanel")
+        self.panel.setGeometry(self.panel_rect)
         self.panel.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.panel.setStyleSheet("""
-            QFrame {
-                background-color: rgba(0, 0, 0, 125);
-                border-radius: 20px;
-            }
-        """)
+
         shadow = QGraphicsDropShadowEffect(self.panel)
-        shadow.setBlurRadius(20)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QtGui.QColor(0, 0, 0, 160))
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 5)
+        shadow.setColor(QtGui.QColor(0,0,0,80))
         self.panel.setGraphicsEffect(shadow)
+
 
         # Aseguramos el orden de apilamiento
         if full_pix:
@@ -256,26 +372,45 @@ class LoginWindow(QtWidgets.QWidget):
         vbox.setContentsMargins(40, 30, 40, 30)
         vbox.setSpacing(30)
 
-        # Logo
-        logo_path = resource_path("LogoImg.png")
-        if os.path.exists(logo_path):
-            lbl_logo = QtWidgets.QLabel(self.panel)
-            lbl_logo.setStyleSheet("background-color: transparent;")
-            lbl_logo.setAttribute(QtCore.Qt.WA_TranslucentBackground)
-            pixmap = QtGui.QPixmap(logo_path).scaled(120, 120,
-                QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-            lbl_logo.setPixmap(pixmap)
-            lbl_logo.setAlignment(QtCore.Qt.AlignCenter)
-            vbox.addWidget(lbl_logo)
-        else:
-            lbl_logo = QtWidgets.QLabel(self.panel)
-            lbl_logo.setAlignment(QtCore.Qt.AlignCenter)
-            vbox.addWidget(lbl_logo)
+       
+        logo_path_dark  = resource_path("LogoImg_light.png")
+        logo_path_light = resource_path("LogoImg_dark.png")
+        self.doc_icon_dark  = QtGui.QPixmap(resource_path("doc_white.png")).scaled(40, 40, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        self.doc_icon_light = QtGui.QPixmap(resource_path("doc_black.png")).scaled(40, 40, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        self.lock_icon_dark  = QtGui.QPixmap(resource_path("lock_white.png")).scaled(40, 40, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        self.lock_icon_light = QtGui.QPixmap(resource_path("lock_black.png")).scaled(40, 40, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+
+        # Creamos el QLabel que contendrá el logo
+        self.logo_label = QtWidgets.QLabel(self.panel)
+        self.logo_label.setStyleSheet("background-color: transparent;")
+        self.logo_label.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+
+        # Precargamos ambos pixmaps
+        orig_dark = QtGui.QPixmap(logo_path_dark)
+        self.pix_dark = orig_dark.scaled(
+            150, 150,
+            QtCore.Qt.KeepAspectRatio,
+            QtCore.Qt.SmoothTransformation
+        )
+        self.pix_light = QtGui.QPixmap(logo_path_light).scaled(
+            150, 150,
+            QtCore.Qt.KeepAspectRatio,
+            QtCore.Qt.SmoothTransformation
+        )
+
+        # Arrancamos mostrando el logo para modo oscuro
+        self.logo_label.setPixmap(self.pix_dark)
+        # fijas tamaño del contenedor de logo a 150×150
+        self.logo_label.setFixedSize(150, 150)
+        # centras el pixmap dentro de ese contenedor
+        self.logo_label.setAlignment(QtCore.Qt.AlignCenter)
+        # permites que si el pixmap es más pequeño, aparezca centrado sin recortes
+        self.logo_label.setScaledContents(False)
+        vbox.addWidget(self.logo_label, alignment=QtCore.Qt.AlignCenter)
 
         # Título
         lbl_text = QtWidgets.QLabel("Iniciar Sesión", alignment=QtCore.Qt.AlignCenter)
         lbl_text.setStyleSheet("""
-            color: white;
             font-size: 25px;
             font-weight: bold;
             background: transparent;
@@ -284,53 +419,45 @@ class LoginWindow(QtWidgets.QWidget):
 
         # Documento
         hdoc = QtWidgets.QHBoxLayout()
-        lbl_doc = QtWidgets.QLabel("📄")
-        lbl_doc.setFixedWidth(28)
-        lbl_doc.setStyleSheet("font-size: 22px; background: transparent;")
-        hdoc.addWidget(lbl_doc)
+        self.lbl_doc = QtWidgets.QLabel(self.panel)
+        self.lbl_doc.setPixmap(self.doc_icon_dark)
+        self.lbl_doc.setFixedWidth(40)
+        self.lbl_doc.setStyleSheet("font-size: 30px; background: transparent;")
+        hdoc.addWidget(self.lbl_doc)
+
         lbl_doctxt = QtWidgets.QLabel("Documento:")
-        lbl_doctxt.setStyleSheet("color: white; font-size: 16px; font-weight: bold; background: transparent;")
+        lbl_doctxt.setStyleSheet("font-size: 16px; font-weight: bold; background: transparent;")
         hdoc.addWidget(lbl_doctxt)
+
         self.edit_doc = QtWidgets.QLineEdit()
         self.edit_doc.setPlaceholderText("12345678")
-        self.edit_doc.setStyleSheet("""
-            QLineEdit {
-                background-color: rgba(0,0,0,200);
-                color: white;
-                border-radius: 15px;
-                padding: 8px 12px;
-                font-size: 14px;
-            }
-        """)
         regex = QtCore.QRegularExpression(r"\d*")
         validator = QtGui.QRegularExpressionValidator(regex, self.edit_doc)
         self.edit_doc.setValidator(validator)
         hdoc.addWidget(self.edit_doc, stretch=1)
+
         vbox.addLayout(hdoc)
+
 
         # Contraseña
         hpwd = QtWidgets.QHBoxLayout()
-        lbl_pwd = QtWidgets.QLabel("🔒")
-        lbl_pwd.setFixedWidth(28)
-        lbl_pwd.setStyleSheet("font-size: 22px; background: transparent;")
-        hpwd.addWidget(lbl_pwd)
+        self.lbl_pwd = QtWidgets.QLabel(self.panel)
+        self.lbl_pwd.setPixmap(self.lock_icon_dark)
+        self.lbl_pwd.setFixedWidth(40)
+        self.lbl_pwd.setStyleSheet("font-size: 30px; background: transparent;")
+        hpwd.addWidget(self.lbl_pwd)
+
         lbl_pwdtxt = QtWidgets.QLabel("Contraseña:")
-        lbl_pwdtxt.setStyleSheet("color: white; font-size: 16px; font-weight: bold; background: transparent;")
+        lbl_pwdtxt.setStyleSheet("font-size: 16px; font-weight: bold; background: transparent;")
         hpwd.addWidget(lbl_pwdtxt)
+
         self.edit_pwd = QtWidgets.QLineEdit()
         self.edit_pwd.setEchoMode(QtWidgets.QLineEdit.Password)
         self.edit_pwd.setPlaceholderText("••••••••")
-        self.edit_pwd.setStyleSheet("""
-            QLineEdit {
-                background-color: rgba(0,0,0,200);
-                color: white;
-                border-radius: 15px;
-                padding: 8px 12px;
-                font-size: 14px;
-            }
-        """)
         hpwd.addWidget(self.edit_pwd, stretch=1)
+
         vbox.addLayout(hpwd)
+
 
         # Botón Iniciar sesión
         btn = QtWidgets.QPushButton("Iniciar sesión", self.panel)
@@ -338,7 +465,6 @@ class LoginWindow(QtWidgets.QWidget):
         btn.setStyleSheet("""
             QPushButton {
                 background-color: #007BFF;
-                color: white;
                 border-radius: 25px;
                 font-size: 16px;
             }
@@ -351,10 +477,10 @@ class LoginWindow(QtWidgets.QWidget):
 
         # Olvidaste tu contraseña
         btn_forgot = QtWidgets.QPushButton("¿Olvidaste tu contraseña?", self.panel)
+        btn_forgot.setObjectName("forgotBtn")
         btn_forgot.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
-                color: white;
                 font-size: 18px;
                 font-weight: bold;
             }
@@ -364,6 +490,100 @@ class LoginWindow(QtWidgets.QWidget):
         """)
         btn_forgot.clicked.connect(self.on_forgot_password)
         vbox.addWidget(btn_forgot, alignment=QtCore.Qt.AlignCenter)
+        
+        # — Estado inicial de tema —
+                # — Botón circulito para cambiar tema —
+        self.theme_btn = QtWidgets.QPushButton(self)
+        self.theme_btn.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        self.theme_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: rgba(255,255,255,30);  /* ligero resalte */
+            }
+        """)
+        self.theme_btn.setToolTip("Cambiar tema día/noche")
+        self.theme_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self.theme_btn.setFixedSize(50, 50)
+        self.theme_btn.setFlat(True)
+
+        # Cargamos y escalamos los pixmaps de luna y sol
+        moon_pix = QtGui.QPixmap(resource_path("moon.png")) \
+            .scaled(50, 50, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        sun_pix  = QtGui.QPixmap(resource_path("sun.png")) \
+            .scaled(50, 50, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+
+        self.moon_icon = QtGui.QIcon(moon_pix)
+        self.sun_icon  = QtGui.QIcon(sun_pix)
+
+        # Glow effect (único “borde” visible)
+        self.glow = QGraphicsDropShadowEffect(self.theme_btn)
+        self.glow.setBlurRadius(20)
+        self.glow.setOffset(0)
+        self.theme_btn.setGraphicsEffect(self.glow)
+
+        # Posición abajo-derecha
+        self.theme_btn.move(self.width() - 60, self.height() - 60)
+        self.theme_btn.clicked.connect(self.toggle_theme)
+        self.theme_btn.raise_()
+        self.theme_btn.setIcon(self.moon_icon if self.is_dark else self.sun_icon)
+        self.theme_btn.setIconSize(QtCore.QSize(50, 50))
+        self.glow.setColor(
+            QtGui.QColor(200,200,255,180) if self.is_dark
+            else QtGui.QColor(255,200,50,180)
+        )
+
+        # — Inicializar en modo oscuro (“luna”) —
+        self.is_dark = True
+        dark_ss = """
+            QWidget {
+                background-color: #2b2b2b;
+                color: #f0f0f0;
+            }
+            /* panel seminegro */
+            QFrame {
+                background-color: rgba(0,0,0,125);
+                border-radius: 20px;
+            }
+            /* campos de texto oscuros */
+            QLineEdit {
+                background-color: rgba(0,0,0,200);
+                color: #f0f0f0;
+                font-size: 15px;
+                border-radius: 15px;
+                padding: 8px 12px;
+            }
+            /* botones generales */
+            QPushButton {
+                background-color: #007BFF;
+                color: #ffffff;
+                border-radius: 25px;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #339CFF;
+            }
+            /* “Olvidaste tu contraseña” */
+            QPushButton#forgotBtn {
+                background-color: transparent;
+                color: #ffffff;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton#forgotBtn:hover {
+                color: #339CFF;
+            }
+        """
+        # Aplica el stylesheet global
+        QtWidgets.QApplication.instance().setStyleSheet(dark_ss)
+
+        # Icono y glow de luna
+        self.theme_btn.setIcon(self.moon_icon)
+        self.theme_btn.setIconSize(QtCore.QSize(50, 50))
+        self.glow.setColor(QtGui.QColor(200,200,255,180))  # brillo frío
+
 
     def center_on_screen(self):
         screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
@@ -391,7 +611,14 @@ class LoginWindow(QtWidgets.QWidget):
             return
 
         self.hide()  # oculto el login
-        self.dashboard = DashboardWindow(user_id, first_name, last_name)
+        theme = "dark" if self.is_dark else "light"
+
+        self.dashboard = DashboardWindow(
+            user_id,
+            first_name,
+            last_name,
+            theme=theme
+        )
         self.dashboard.show()
 
     def on_forgot_password(self):
@@ -399,6 +626,111 @@ class LoginWindow(QtWidgets.QWidget):
         self.close()
         self.recover_window = RecuperarContrasenaWindow(login_window=self)
         self.recover_window.show()
+        
+    def toggle_theme(self):
+        app = QtWidgets.QApplication.instance()
+        settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
+        settings.setValue("theme", "dark" if self.is_dark else "light")
+
+        if self.is_dark:
+            # → PASAR A CLARO
+            light_ss = """
+                /* FONDO Y TEXTO GENERAL */
+                QWidget {
+                    background-color: #f4f4f9;
+                    color: #000000;
+                }
+                /* PANEL CENTRAL */
+               QFrame#centralPanel {
+                    background-color: rgba(255,255,255, 200);   /* menos transparente */
+                    border-radius: 20px;
+                    border: 1px solid rgba(0,0,0,0.1);           /* ligero borde para definición */
+                }
+                QLineEdit {
+                    background-color: #ffffff;   /* fondo 100% blanco */
+                    color: #000000;
+                    border: 1px solid rgba(0,0,0,0.15);
+                    border-radius: 15px;
+                    font-size: 15px;
+                    padding: 8px 12px;
+                }
+                /* Botón principal un poco más suave en claro */
+                QPushButton {
+                    background-color: #1E90FF;
+                    color: #ffffff;
+                    border-radius: 25px;
+                }
+                QPushButton:hover {
+                    background-color: #006FDE;
+                }
+                /* BOTÓN “¿Olvidaste tu contraseña?” */
+                QPushButton#forgotBtn {
+                    background-color: transparent;
+                    color: #000000;
+                    font-size: 18px;
+                    font-weight: bold;
+                }
+                QPushButton#forgotBtn:hover {
+                    color: #339CFF;
+                }
+            """
+            self.bg_label.setPixmap(self.bg_light)
+            self.blurred_bg.setPixmap(self.bg_light.copy(self.panel_rect))
+            self.lbl_doc.setPixmap(self.doc_icon_light)
+            self.lbl_pwd.setPixmap(self.lock_icon_light)
+            self.logo_label.setPixmap(self.pix_light)
+            self.theme_btn.setIcon(self.sun_icon)
+            self.glow.setColor(QtGui.QColor(255,200,50,180))
+
+        else:
+            # → PASAR A OSCURO
+            dark_ss = """
+                QWidget {
+                    background-color: #2b2b2b;
+                    color: #f0f0f0;
+                }
+                QFrame#centralPanel {
+                    background-color: rgba(0,0,0,125);
+                    border-radius: 20px;
+                    border: 1px solid rgba(0,0,0,0.1);  
+                }
+                QLineEdit {
+                    background-color: rgba(0,0,0,200);
+                    color: #f0f0f0;
+                    border: 1px solid rgba(0,0,0,0.15);
+                    border-radius: 15px;
+                    font-size: 15px;
+                    padding: 8px 12px;
+                }
+                QPushButton {
+                    background-color: #007BFF;
+                    color: #ffffff;
+                    border-radius: 25px;
+                }
+                QPushButton:hover {
+                    background-color: #339CFF;
+                }
+                QPushButton#forgotBtn {
+                    background-color: transparent;
+                    color: #ffffff;
+                    font-size: 18px;
+                    font-weight: bold;
+                }
+                QPushButton#forgotBtn:hover {
+                    color: #339CFF;
+                }
+            """
+            self.bg_label.setPixmap(self.bg_dark)
+            self.blurred_bg.setPixmap(self.bg_dark.copy(self.panel_rect))
+            self.lbl_doc.setPixmap(self.doc_icon_dark)
+            self.lbl_pwd.setPixmap(self.lock_icon_dark)
+            self.logo_label.setPixmap(self.pix_dark)
+            self.theme_btn.setIcon(self.moon_icon)
+            self.glow.setColor(QtGui.QColor(200,200,255,180))
+
+        # Aplica TODO el CSS de una sola vez:
+        app.setStyleSheet(light_ss if self.is_dark else dark_ss)
+        self.is_dark = not self.is_dark
 
 # Función para enviar código por correo
 def enviar_codigo_por_email(email_destino):
@@ -462,52 +794,61 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
     def __init__(self, login_window):
         super().__init__()
         self.login_window = login_window
+
+        # — Configuración básica de la ventana —
         self.setWindowTitle("Recuperar Contraseña")
         self.resize(500, 400)
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
         self.setFixedSize(self.width(), self.height())
 
-        # — Fondo completo —
-        bg_path = resource_path("Fondo.png")
-        full_pix = None
-        if os.path.exists(bg_path):
-            full_pix = QtGui.QPixmap(bg_path).scaled(self.size(), QtCore.Qt.IgnoreAspectRatio)
-            self.bg_label = QtWidgets.QLabel(self)
-            self.bg_label.setPixmap(full_pix)
-            self.bg_label.setGeometry(self.rect())
+        # — Panel centrado de 400×(altura−60) —
+        self.panel_rect = QtCore.QRect(
+            50,
+            30,
+            400,
+            self.height() - 60
+        )
 
-        # Definimos la geometría del panel
-        panel_rect = QtCore.QRect(50, 30, 400, 240)
+        # — Fondos escalados con suavizado —
+        self.bg_dark = QtGui.QPixmap(resource_path("FondoLoginDark.png")) \
+            .scaled(self.size(), QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation)
+        self.bg_light = QtGui.QPixmap(resource_path("FondoLoginWhite.png")) \
+            .scaled(self.size(), QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation)
 
-        # — Zona difuminada justo detrás del panel —
-        if full_pix:
-            self.blurred_bg = QtWidgets.QLabel(self)
-            crop = full_pix.copy(panel_rect)
-            self.blurred_bg.setPixmap(crop)
-            self.blurred_bg.setGeometry(panel_rect)
-            blur = QGraphicsBlurEffect()
-            blur.setBlurRadius(15)
-            self.blurred_bg.setGraphicsEffect(blur)
+        # — Label de fondo según tema —
+        self.bg_label = QtWidgets.QLabel(self)
+        bg_pix = self.bg_dark if self.login_window.is_dark else self.bg_light
+        self.bg_label.setPixmap(bg_pix)
+        self.bg_label.setGeometry(self.rect())
+        self.bg_label.setScaledContents(True)
 
-        # — Panel semitransparente y redondeado —
+        # — Iconos preparados (blanco para oscuro, negro para claro) —
+        self.doc_icon_white = QtGui.QPixmap(resource_path("doc_white.png")) \
+            .scaled(28, 28, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        self.doc_icon_black = QtGui.QPixmap(resource_path("doc_black.png")) \
+            .scaled(28, 28, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+
+        # — Zona difuminada detrás del panel —
+        self.blurred_bg = QtWidgets.QLabel(self)
+        blur_fx = QGraphicsBlurEffect(self.blurred_bg)
+        blur_fx.setBlurRadius(15)
+        self.blurred_bg.setGraphicsEffect(blur_fx)
+        self.blurred_bg.setPixmap(bg_pix.copy(self.panel_rect))
+        self.blurred_bg.setGeometry(self.panel_rect)
+
+        # — Panel semitransparente y con sombra —
         self.panel = QtWidgets.QFrame(self)
-        self.panel.setGeometry(panel_rect)
-        self.panel.setStyleSheet("""
-            QFrame {
-                background-color: rgba(0, 0, 0, 125);
-                border-radius: 20px;
-            }
-        """)
+        self.panel.setObjectName("centralPanel")
+        self.panel.setGeometry(self.panel_rect)
         shadow = QGraphicsDropShadowEffect(self.panel)
-        shadow.setBlurRadius(20)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QtGui.QColor(0, 0, 0, 160))
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 5)
+        shadow.setColor(QtGui.QColor(0, 0, 0, 80))
         self.panel.setGraphicsEffect(shadow)
 
         # Aseguramos orden de apilado
-        if full_pix:
-            self.bg_label.lower()
-            self.blurred_bg.stackUnder(self.panel)
+        self.bg_label.lower()
+        self.blurred_bg.stackUnder(self.panel)
         self.panel.raise_()
 
         # — Layout interno del panel —
@@ -515,64 +856,68 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         vbox.setContentsMargins(40, 30, 40, 30)
         vbox.setSpacing(20)
 
-        # Título
+        # — Título —
         lbl_title = QtWidgets.QLabel("Recuperar Contraseña", self.panel)
         lbl_title.setAlignment(QtCore.Qt.AlignCenter)
-        lbl_title.setStyleSheet("""
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            background-color: transparent;
+        lbl_title.setStyleSheet(f"""
+            QLabel {{
+                color: {'#f0f0f0' if self.login_window.is_dark else '#000000'};
+                font-size: 24px;
+                font-weight: bold;
+                background-color: transparent;
+            }}
         """)
         vbox.addWidget(lbl_title)
-
         vbox.addStretch(1)
 
-        # Documento
+        # — Campo Documento con icono —
         hdoc = QtWidgets.QHBoxLayout()
-        lbl_doc = QtWidgets.QLabel("📄", self.panel)
-        lbl_doc.setFixedWidth(28)
-        lbl_doc.setStyleSheet("font-size: 22px; background-color: transparent;")
+        lbl_doc = QtWidgets.QLabel(self.panel)
+        # Fondo transparente en el label
+        lbl_doc.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        # Icono según tema
+        icon = self.doc_icon_white if self.login_window.is_dark else self.doc_icon_black
+        lbl_doc.setPixmap(icon)
+        lbl_doc.setFixedSize(28, 28)
         hdoc.addWidget(lbl_doc)
 
         lbl_doctxt = QtWidgets.QLabel("Documento:", self.panel)
-        lbl_doctxt.setStyleSheet("""
-            color: white;
-            font-size: 16px;
-            font-weight: bold;
-            background-color: transparent;
+        lbl_doctxt.setStyleSheet(f"""
+            QLabel {{
+                color: {'#f0f0f0' if self.login_window.is_dark else '#000000'};
+                font-size: 16px;
+                font-weight: bold;
+                background-color: transparent;
+            }}
         """)
         hdoc.addWidget(lbl_doctxt)
 
         self.edit_doc = QtWidgets.QLineEdit(self.panel)
         self.edit_doc.setPlaceholderText("12345678")
-        self.edit_doc.setStyleSheet("""
-            QLineEdit {
-                background-color: rgba(0,0,0,200);
-                color: white;
-                border-radius: 15px;
-                padding: 8px 12px;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #339CFF;
-            }
-        """)
         regex = QtCore.QRegularExpression(r"\d*")
         validator = QtGui.QRegularExpressionValidator(regex, self.edit_doc)
         self.edit_doc.setValidator(validator)
+        self.edit_doc.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {'rgba(0,0,0,200)' if self.login_window.is_dark else '#ffffff'};
+                color: {'#f0f0f0' if self.login_window.is_dark else '#000000'};
+                border: 1px solid rgba(0,0,0,0.15);
+                border-radius: 15px;
+                padding: 8px 12px;
+                font-size: 15px;
+            }}
+        """)
         hdoc.addWidget(self.edit_doc, stretch=1)
         vbox.addLayout(hdoc)
-
         vbox.addStretch(1)
 
-        # Botón Enviar código
+        # — Botón Enviar código —
         btn_send = QtWidgets.QPushButton("Enviar código", self.panel)
         btn_send.setFixedSize(200, 50)
         btn_send.setStyleSheet("""
             QPushButton {
                 background-color: #007BFF;
-                color: white;
+                color: #ffffff;
                 border-radius: 25px;
                 font-size: 16px;
             }
@@ -582,10 +927,9 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         """)
         btn_send.clicked.connect(self.enviar_codigo)
         vbox.addWidget(btn_send, alignment=QtCore.Qt.AlignCenter)
-
         vbox.addStretch(2)
 
-        # — Centrar panel en la ventana —
+        # — Centrar el panel dentro de la ventana —
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.addStretch()
         h_center = QtWidgets.QHBoxLayout()
@@ -594,6 +938,7 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         h_center.addStretch()
         main_layout.addLayout(h_center)
         main_layout.addStretch()
+
         
     def closeEvent(self, event):
         # cuando cierras esta ventana, reaparece el login
@@ -630,92 +975,103 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         win.login_window = self.login_window
         win.setWindowTitle("Verificar Código")
         win.resize(500, 400)
-        self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
-        self.setFixedSize(self.width(), self.height())
-        # — Fondo completo —
-        bg_path = resource_path("Fondo.png")
-        full_pix = None
-        if os.path.exists(bg_path):
-            full_pix = QtGui.QPixmap(bg_path).scaled(win.size(), QtCore.Qt.IgnoreAspectRatio)
-            win.bg_label = QtWidgets.QLabel(win)
-            win.bg_label.setPixmap(full_pix)
-            win.bg_label.setGeometry(win.rect())
+        win.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
+        win.setFixedSize(win.width(), win.height())
 
-        # Definimos la geometría fija del panel (y del blur detrás)
-        # Ajustamos la altura para que sea win.height() - márgenes
+        # — Cargamos y escalamos ambos fondos —
+        bg_dark  = QtGui.QPixmap(resource_path("FondoLoginDark.png")).scaled(
+            win.size(), QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation
+        )
+        bg_light = QtGui.QPixmap(resource_path("FondoLoginWhite.png")).scaled(
+            win.size(), QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation
+        )
+
+        # — QLabel de fondo según tema —
+        win.bg_label = QtWidgets.QLabel(win)
+        if self.login_window.is_dark:
+            win.bg_label.setPixmap(bg_dark)
+        else:
+            win.bg_label.setPixmap(bg_light)
+        win.bg_label.setGeometry(win.rect())
+
+        # Definimos geometría del panel
         panel_rect = QtCore.QRect(50, 30, 400, win.height() - 60)
 
-        # — Zona difuminada justo detrás del panel —
-        if full_pix:
-            blurred_bg = QtWidgets.QLabel(win)
-            crop = full_pix.copy(panel_rect)
-            blurred_bg.setPixmap(crop)
-            blurred_bg.setGeometry(panel_rect)
-            blur_effect = QGraphicsBlurEffect()
-            blur_effect.setBlurRadius(15)
-            blurred_bg.setGraphicsEffect(blur_effect)
+        # — Blur detrás del panel —
+        blurred_bg = QtWidgets.QLabel(win)
+        base_pix = bg_dark if self.login_window.is_dark else bg_light
+        crop = base_pix.copy(panel_rect)
+        blurred_bg.setPixmap(crop)
+        blurred_bg.setGeometry(panel_rect)
+        blur_fx = QGraphicsBlurEffect(blurred_bg)
+        blur_fx.setBlurRadius(15)
+        blurred_bg.setGraphicsEffect(blur_fx)
 
-        # — Panel semitransparente y redondeado —
+        # — Panel semitransparente —
         panel = QtWidgets.QFrame(win)
+        panel.setObjectName("centralPanel")
         panel.setGeometry(panel_rect)
-        panel.setStyleSheet("""
-            QFrame {
-                background-color: rgba(0,0,0,125);
+        panel.setStyleSheet(f"""
+            QFrame#centralPanel {{
+                background-color: rgba({ '0,0,0,125' if self.login_window.is_dark else '255,255,255,200' });
                 border-radius: 20px;
-            }
+                border: 1px solid rgba(0,0,0,0.1);
+            }}
         """)
         shadow = QGraphicsDropShadowEffect(panel)
         shadow.setBlurRadius(20)
         shadow.setOffset(0, 4)
         shadow.setColor(QtGui.QColor(0, 0, 0, 160))
         panel.setGraphicsEffect(shadow)
-
-        # Aseguramos orden de apilado
-        if full_pix:
-            win.bg_label.lower()
-            blurred_bg.stackUnder(panel)
+        win.bg_label.lower()
+        blurred_bg.stackUnder(panel)
         panel.raise_()
 
-        # — Layout interno del panel —
+        # — Layout interno —
         layout = QtWidgets.QVBoxLayout(panel)
         layout.setContentsMargins(40, 30, 40, 30)
         layout.setSpacing(20)
 
-        lbl = QtWidgets.QLabel(
-            "Ingresa el código de recuperación enviado a tu correo:", panel
-        )
+        # Carga de iconos según tema
+        icon_color = "white" if self.login_window.is_dark else "black"
+        doc_icon = QtGui.QPixmap(resource_path(f"doc_{icon_color}.png")).scaled(28,28,QtCore.Qt.KeepAspectRatio,QtCore.Qt.SmoothTransformation)
+
+        # Etiqueta de instrucción
+        lbl = QtWidgets.QLabel("Ingresa el código de recuperación enviado a tu correo:", panel)
         lbl.setAlignment(QtCore.Qt.AlignCenter)
-        lbl.setWordWrap(True)                             # permite multilínea
-        lbl.setStyleSheet("""
-            color: white;
-            font-size: 16px;
-            font-weight: bold;
-            background-color: transparent;
+        lbl.setWordWrap(True)
+        lbl.setStyleSheet(f"""
+            QLabel {{
+                color: {'#f0f0f0' if self.login_window.is_dark else '#000000'};
+                font-size: 16px;
+                font-weight: bold;
+                background-color: transparent;
+            }}
         """)
         layout.addWidget(lbl)
 
+        # Campo de código
         self.edit_codigo = QtWidgets.QLineEdit(panel)
         self.edit_codigo.setPlaceholderText("Código")
-        self.edit_codigo.setStyleSheet("""
-            QLineEdit {
-                background-color: rgba(0,0,0,200);
-                color: white;
+        self.edit_codigo.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {'rgba(0,0,0,200)' if self.login_window.is_dark else '#ffffff'};
+                color: {'#f0f0f0' if self.login_window.is_dark else '#000000'};
+                border: 1px solid rgba(0,0,0,0.15);
                 border-radius: 15px;
                 padding: 8px 12px;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #339CFF;
-            }
+                font-size: 15px;
+            }}
         """)
         layout.addWidget(self.edit_codigo)
 
+        # Botón verificar
         btn = QtWidgets.QPushButton("Verificar Código", panel)
         btn.setFixedSize(200, 50)
         btn.setStyleSheet("""
             QPushButton {
                 background-color: #007BFF;
-                color: white;
+                color: #ffffff;
                 border-radius: 25px;
                 font-size: 16px;
             }
@@ -726,105 +1082,89 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         btn.clicked.connect(self.verificar_codigo)
         layout.addWidget(btn, alignment=QtCore.Qt.AlignCenter)
 
-        # Finalmente mostramos
         win.show()
-
-        def _on_close(event):
-            if event.spontaneous():
-                win.login_window.show()
-            event.accept()
-        win.closeEvent = _on_close
-
+        win.closeEvent = lambda e: (self.login_window.show(), e.accept()) if e.spontaneous() else e.accept()
         self.codigo_window = win
 
-
-    def verificar_codigo(self):
-        if self.edit_codigo.text().strip() == getattr(self, "codigo_recibido", ""):
-            self.codigo_window.close()
-            self.mostrar_ventana_cambio_contrasena()
-        else:
-            QtWidgets.QMessageBox.warning(self, "Código incorrecto", "El código ingresado es incorrecto.")
 
     def mostrar_ventana_cambio_contrasena(self):
         win = QtWidgets.QWidget()
         win.login_window = self.login_window
         win.setWindowTitle("Cambiar Contraseña")
         win.resize(400, 300)
-        self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
-        self.setFixedSize(self.width(), self.height())
+        win.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
+        win.setFixedSize(win.width(), win.height())
 
-        # — Fondo completo —
-        bg_path = resource_path("Fondo.png")
-        full_pix = None
-        if os.path.exists(bg_path):
-            full_pix = QtGui.QPixmap(bg_path).scaled(win.size(), QtCore.Qt.IgnoreAspectRatio)
-            win.bg_label = QtWidgets.QLabel(win)
-            win.bg_label.setPixmap(full_pix)
-            win.bg_label.setGeometry(win.rect())
+        # — Fondos según tema —
+        bg_dark  = QtGui.QPixmap(resource_path("FondoLoginDark.png")).scaled(
+            win.size(), QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation
+        )
+        bg_light = QtGui.QPixmap(resource_path("FondoLoginWhite.png")).scaled(
+            win.size(), QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation
+        )
+        win.bg_label = QtWidgets.QLabel(win)
+        win.bg_label.setPixmap(bg_dark if self.login_window.is_dark else bg_light)
+        win.bg_label.setGeometry(win.rect())
 
-        # Geometría fija para el panel
+        # Panel
         panel_rect = QtCore.QRect(50, 30, 300, 240)
+        blurred_bg = QtWidgets.QLabel(win)
+        base_pix = bg_dark if self.login_window.is_dark else bg_light
+        crop = base_pix.copy(panel_rect)
+        blurred_bg.setPixmap(crop)
+        blurred_bg.setGeometry(panel_rect)
+        blur_fx = QGraphicsBlurEffect(blurred_bg)
+        blur_fx.setBlurRadius(15)
+        blurred_bg.setGraphicsEffect(blur_fx)
 
-        # — Zona difuminada justo detrás del panel —
-        if full_pix:
-            blurred_bg = QtWidgets.QLabel(win)
-            crop = full_pix.copy(panel_rect)
-            blurred_bg.setPixmap(crop)
-            blurred_bg.setGeometry(panel_rect)
-            blur_effect = QGraphicsBlurEffect()
-            blur_effect.setBlurRadius(15)  # ajusta la intensidad
-            blurred_bg.setGraphicsEffect(blur_effect)
-
-        # — Panel semitransparente y redondeado —
         panel = QtWidgets.QFrame(win)
+        panel.setObjectName("centralPanel")
         panel.setGeometry(panel_rect)
-        panel.setStyleSheet("""
-            QFrame {
-                background-color: rgba(0,0,0,125);
+        panel.setStyleSheet(f"""
+            QFrame#centralPanel {{
+                background-color: rgba({ '0,0,0,125' if self.login_window.is_dark else '255,255,255,200' });
                 border-radius: 20px;
-            }
+                border: 1px solid rgba(0,0,0,0.1);
+            }}
         """)
         shadow = QGraphicsDropShadowEffect(panel)
         shadow.setBlurRadius(20)
         shadow.setOffset(0, 4)
         shadow.setColor(QtGui.QColor(0, 0, 0, 160))
         panel.setGraphicsEffect(shadow)
-
-        # Aseguramos orden de apilado
-        if full_pix:
-            win.bg_label.lower()
-            blurred_bg.stackUnder(panel)
+        win.bg_label.lower()
+        blurred_bg.stackUnder(panel)
         panel.raise_()
 
-        # — Layout interno del panel —
+        # Layout y widgets
         layout = QtWidgets.QVBoxLayout(panel)
         layout.setContentsMargins(40, 30, 40, 30)
         layout.setSpacing(20)
 
         lbl = QtWidgets.QLabel("Ingresa tu nueva contraseña:", panel)
         lbl.setAlignment(QtCore.Qt.AlignCenter)
-        lbl.setStyleSheet("""
-            color: white;
-            font-size: 16px;
-            font-weight: bold;
-            background-color: transparent;
+        lbl.setStyleSheet(f"""
+            QLabel {{
+                color: {'#f0f0f0' if self.login_window.is_dark else '#000000'};
+                font-size: 16px;
+                font-weight: bold;
+                background-color: transparent;
+            }}
         """)
         layout.addWidget(lbl)
 
         self.edit_new_pwd = QtWidgets.QLineEdit(panel)
         self.edit_new_pwd.setEchoMode(QtWidgets.QLineEdit.Password)
         self.edit_new_pwd.setPlaceholderText("Nueva contraseña")
-        self.edit_new_pwd.setStyleSheet("""
-            QLineEdit {
-                background-color: rgba(0,0,0,200);
-                color: white;
+        self.edit_new_pwd.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {'rgba(0,0,0,200)' if self.login_window.is_dark else '#ffffff'};
+                color: {'#f0f0f0' if self.login_window.is_dark else '#000000'};
+                border: 1px solid rgba(0,0,0,0.15);
                 border-radius: 15px;
                 padding: 8px 12px;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #339CFF;
-            }
+                font-size: 15px;
+            }}
         """)
         layout.addWidget(self.edit_new_pwd)
 
@@ -833,7 +1173,7 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         btn.setStyleSheet("""
             QPushButton {
                 background-color: #007BFF;
-                color: white;
+                color: #ffffff;
                 border-radius: 25px;
                 font-size: 16px;
             }
@@ -844,24 +1184,19 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         btn.clicked.connect(self.cambiar_contrasena)
         layout.addWidget(btn, alignment=QtCore.Qt.AlignCenter)
 
-        # Centrar
-        main = QtWidgets.QVBoxLayout(win)
-        main.addStretch()
-        hc = QtWidgets.QHBoxLayout()
-        hc.addStretch()
-        hc.addWidget(panel)
-        hc.addStretch()
-        main.addLayout(hc)
-        main.addStretch()
-        
-        def _on_close(event):
-            if event.spontaneous():
-                win.login_window.show()
-            event.accept()
-        win.closeEvent = _on_close
-
-        self.cambio_window = win
         win.show()
+        win.closeEvent = lambda e: (self.login_window.show(), e.accept()) if e.spontaneous() else e.accept()
+        self.cambio_window = win
+
+
+
+    def verificar_codigo(self):
+        if self.edit_codigo.text().strip() == getattr(self, "codigo_recibido", ""):
+            self.codigo_window.close()
+            self.mostrar_ventana_cambio_contrasena()
+        else:
+            QtWidgets.QMessageBox.warning(self, "Código incorrecto", "El código ingresado es incorrecto.")
+
 
     def cambiar_contrasena(self):
         new_pwd = self.edit_new_pwd.text().strip()
@@ -876,7 +1211,14 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         self.cambio_window.close()
         # Vuelve a mostrar el login
         self.login_window.show()
-
+def main():
+    # Inicializa tu ventana de Tkinter (o de Qt, según cómo lo tengas montado)
+    root = tk.Tk()
+    # Aquí podrías hacer cualquier setup adicional que ya tenías,
+    # por ejemplo:
+    dashboard = DashboardWindow(root)
+    # … configuración de layout, título, iconos, etc. …g
+    root.mainloop()
 
 if __name__ == "__main__":
     check_for_update_and_exit_if_needed()  # 👈 Esto va PRIMERO. Si no está actualizado, se sale.
