@@ -1765,7 +1765,8 @@ def modificar_radicado(parent_root, conn, user_id):
         ctk.CTkLabel(cell, text=label_text, anchor="w",
                      font=ctk.CTkFont(weight="bold")).pack(fill="x")
         ctk.CTkEntry(cell, textvariable=var, state="readonly").pack(fill="x")
-    scroll = ctk.CTkScrollableFrame(win, fg_color="#2b2b2b")
+    # fondo del contenedor de los campos debe cambiar con el tema
+    scroll = ctk.CTkScrollableFrame(win, fg_color=color_card)
     scroll.pack(fill="both", expand=True, padx=20, pady=(0,10))
     for i in range(3): scroll.grid_columnconfigure(i, weight=1, uniform="col")
 
