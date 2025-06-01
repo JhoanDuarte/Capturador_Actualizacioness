@@ -317,7 +317,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
     tema_actual = settings.value("theme", "dark")  # “dark” o “light”
     
-    if tema_actual == "light":
+    if tema_actual == "dark":
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
@@ -1667,7 +1667,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
     tema_actual = settings.value("theme", "dark")  # “dark” o “light”
     
-    if tema_actual == "light":
+    if tema_actual == "dark":
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
@@ -4685,7 +4685,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         from PyQt5.QtWidgets import QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect
         from PyQt5.QtGui import QPainter, QImage, QPalette, QBrush
         
-        bg_file = "FondoDashboardWhite.png" if theme == "dark" else "FondoDashboardDark.png"
+        bg_file = "FondoDashboardDark.png" if theme == "dark" else "FondoDashboardWhite.png"
         app = QtWidgets.QApplication.instance()
 
         # — Stylesheet para tema oscuro —
@@ -4803,7 +4803,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 self.panel.bg_blur = self.bg_blur_pix
                 self.panel.update()
         # Elige stylesheet e icono según el tema
-        if theme == "light":
+        if theme == "dark":
             app.setStyleSheet(dark_ss)
             self.theme_btn.setIcon(self.icon_moon)
             bg_file = "FondoDashboardDark.png"
@@ -4812,8 +4812,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             self.theme_btn.setIcon(self.icon_sun)
             bg_file = "FondoDashboardWhite.png"
             
-        if self.theme == "dark":
-            # En tema oscuro, el panel debe permanecer oscuro
+        if theme == "dark":
             self.panel.set_overlay_color((0,0,0), alpha=155)
         else:
             # En tema claro, usamos un panel blanco semitransparente
