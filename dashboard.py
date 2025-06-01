@@ -1435,14 +1435,14 @@ def modificar_radicado(parent_root, conn, user_id):
         color_container  = "#1e1e1e"
         color_card       = "#2b2b2b"
         fg_text_color    = "white"
-        entry_fg_color   = "white"
+        entry_fg_color   = "#e0e0e0"  # gris claro para no ser 100% blanco
         entry_text_color = "black"
         placeholder_color= "#BBBBBB"
     else:
         color_container  = "#F8F8F8"
         color_card       = "#EAEAEA"
         fg_text_color    = "black"
-        entry_fg_color   = "black"
+        entry_fg_color   = "#2b2b2b"  # gris oscuro para no ser 100% negro
         entry_text_color = "white"
         placeholder_color= "#666666"
 
@@ -3488,7 +3488,8 @@ def ver_progreso(root, conn):
     buscar_est.grid(row=6, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_est.bind("<KeyRelease>", _filtrar_est)
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=7, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=1, sticky="e")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=100).grid(row=7, column=1, sticky="w")
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=2, sticky="e")
     estado_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
     estado_frame.grid(row=8, column=0, columnspan=3, sticky="w")
     estado_vars = {}
@@ -3509,9 +3510,6 @@ def ver_progreso(root, conn):
                 estado_vars[est].set(True)
         actualizar_tabs()
 
-    # coloca "Solo visibles" junto a los botones de estado
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=60)\
-        .grid(row=7, column=2, padx=(5,0))
 
     # Filtro de usuarios
     cur = conn.cursor()
@@ -3523,11 +3521,9 @@ def ver_progreso(root, conn):
     buscar_usr.grid(row=10, column=1, sticky="w", padx=(0,10), pady=(10,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
     ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=11, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=11, column=1, sticky="e")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=100).grid(row=11, column=1, sticky="w")
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=11, column=2, sticky="e")
 
-    # igualmente para usuarios
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=60)\
-        .grid(row=11, column=2, padx=(5,0))
     user_frame = ctk.CTkScrollableFrame(sidebar, width=230, height=120)
     user_frame.grid(row=12, column=0, columnspan=3, sticky="w")
 
@@ -5234,7 +5230,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
             ctk.CTkLabel(win, text="Tipo de Paquete:", text_color=fg,
                         fg_color=bg, font=("Arial",14,"bold")).pack(pady=10)
-            opt_bg = "#000000" if theme == "light" else "#FFFFFF"
+            opt_bg = "#2b2b2b" if theme == "light" else "#e0e0e0"
             opt_fg = "#FFFFFF" if theme == "light" else "#000000"
 
             ctk.CTkOptionMenu(
