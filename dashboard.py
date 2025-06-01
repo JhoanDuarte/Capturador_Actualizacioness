@@ -317,7 +317,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
     tema_actual = settings.value("theme", "dark")  # “dark” o “light”
     
-    if tema_actual == "light":
+    if tema_actual == "dark":
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
@@ -1688,7 +1688,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
     tema_actual = settings.value("theme", "dark")  # “dark” o “light”
     
-    if tema_actual == "light":
+    if tema_actual == "dark":
         color_container  = "#1e1e1e"  # fondo general “dark”
         color_card       = "#2b2b2b"  # fondo del “card” en dark
         fg_text_color    = "white"    # todo texto va en blanco
