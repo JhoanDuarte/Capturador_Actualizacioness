@@ -4611,7 +4611,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
         le = self.cmb_role.lineEdit()
         le.setAlignment(QtCore.Qt.AlignCenter)
         le.setReadOnly(True)
-        le.setTextMargins(10, 0, 24, 0)  # margen para compensar la flecha
+        # Márgenes extra para evitar que el texto se corte
+        le.setTextMargins(10, 0, 10, 0)
 
         # Instalamos el filtro
         f = PopupOnClickFilter(self.cmb_role)
@@ -4725,22 +4726,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
         """
         if hasattr(self, "cmb_role"):
             if theme == "light":
-                # En tema claro, usaremos fondo negro semitransparente y texto blanco
+
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
                         background-color: rgba(0, 0, 0, 150);
                         color: #FFFFFF;
                         border-radius: 10px;
-                        padding: 8px 28px 8px 28px; /* espacio simétrico */
+                        padding: 4px 20px;
                         font-size: 14px;
                         font-weight: bold;
                     }
-                    QComboBox::drop-down {
-                        border: none;
-                        width: 24px;                    /* para balancear el texto */
-                    }
-
-                    /* Desplegable también oscuro */
+                    QComboBox::drop-down { border: none; }
                     QComboBox QAbstractItemView {
                         background-color: #000000;
                         color: #FFFFFF;
@@ -4748,22 +4744,16 @@ class DashboardWindow(QtWidgets.QMainWindow):
                     }
                 """)
             else:
-                # En tema oscuro, fondo blanco semitransparente y texto negro
                 self.cmb_role.setStyleSheet("""
                     QComboBox {
                         background-color: rgba(255, 255, 255, 150);
                         color: #000000;
                         border-radius: 10px;
-                        padding: 8px 28px 8px 28px; /* espacio simétrico */
+                        padding: 4px 20px;
                         font-size: 14px;
                         font-weight: bold;
                     }
-                    QComboBox::drop-down {
-                        border: none;
-                        width: 24px;                    /* para balancear el texto */
-                    }
-
-                    /* Desplegable claro */
+                    QComboBox::drop-down { border: none; }
                     QComboBox QAbstractItemView {
                         background-color: #FFFFFF;
                         color: #000000;
@@ -4987,8 +4977,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         def elegir_tipo():
             win = ctk.CTkToplevel(self._tk_root)
             win.title("Seleccione Tipo de Paquete")
-            bg = "#ffffffcc" if theme == "dark" else "#000000cc"  # semitransparente
-            fg = "black" if theme == "dark" else "white"
+            # Evitamos colores con transparencia (Tk no los soporta)
+            bg = "#2f2f2f" if theme == "dark" else "#f0f0f0"
+            fg = "white" if theme == "dark" else "black"
             win.configure(fg_color=bg)
             tipo_var = tk.StringVar(master=self._tk_root, value="DIGITACION")
             aceptado = tk.BooleanVar(master=self._tk_root, value=False)
