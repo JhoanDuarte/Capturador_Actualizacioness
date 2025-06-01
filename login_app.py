@@ -198,94 +198,11 @@ def authenticate_user_by_doc(num_doc: str, password: str):
 class LoginWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        dark_ss = """
-            QWidget {
-                background-color: #2b2b2b;
-                color: #f0f0f0;
-            }
-            /* panel seminegro */
-            QFrame#centralPanel {
-                background-color: rgba(0,0,0,125);
-                border-radius: 20px;
-            }
-            /* campos de texto oscuros */
-            QLineEdit {
-                background-color: rgba(0,0,0,200);
-                color: #f0f0f0;
-                font-size: 15px;
-                border-radius: 15px;
-                padding: 8px 12px;
-            }
-            /* botones generales */
-            QPushButton {
-                background-color: #007BFF;
-                color: #ffffff;
-                border-radius: 25px;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                background-color: #339CFF;
-            }
-            /* “Olvidaste tu contraseña” */
-            QPushButton#forgotBtn {
-                background-color: transparent;
-                color: #ffffff;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            QPushButton#forgotBtn:hover {
-                color: #339CFF;
-            }
-        """
-        light_ss = """
-            QWidget {
-                background-color: #f4f4f9;
-                color: #000000;
-            }
-            /* panel central claro */
-            QFrame#centralPanel {
-                background-color: rgba(255,255,255,200);
-                border-radius: 20px;
-                border: 1px solid rgba(0,0,0,0.1);
-            }
-            /* campos de texto claros */
-            QLineEdit {
-                background-color: #ffffff;
-                color: #000000;
-                border: 1px solid rgba(0,0,0,0.15);
-                border-radius: 15px;
-                padding: 8px 12px;
-                font-size: 15px;
-            }
-            /* botones claros */
-            QPushButton {
-                background-color: #1E90FF;
-                color: #ffffff;
-                border-radius: 25px;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                background-color: #006FDE;
-            }
-            QPushButton#forgotBtn {
-                background-color: transparent;
-                color: #000000;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            QPushButton#forgotBtn:hover {
-                color: #339CFF;
-            }
-        """
         settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
         stored = settings.value("theme", "dark")
         self.is_dark = (stored == "dark")
 
-        # —————————————————————————
-        # 3) APLICAMOS EL CSS INICIAL
-        # —————————————————————————
-        initial_ss = dark_ss if self.is_dark else light_ss
-        QtWidgets.QApplication.instance().setStyleSheet(initial_ss)
+
 
         # y fija el icono del botón
         self.setWindowTitle("Login - Capturador De Datos")
@@ -327,11 +244,11 @@ class LoginWindow(QtWidgets.QWidget):
 
         # — Widget de fondo completo (siempre creado) —
         self.bg_label = QtWidgets.QLabel(self)
-        # Si cargaste full_pix úsalo; si no, muestra bg_dark por defecto
+        # Si cargaste full_pix úsalo; si no, usa el fondo según el tema
         if full_pix:
             self.bg_label.setPixmap(full_pix)
         else:
-            self.bg_label.setPixmap(self.bg_dark)
+            self.bg_label.setPixmap(self.bg_dark if self.is_dark else self.bg_light)
 
         # Ocupa toda la ventana
         self.bg_label.setGeometry(self.rect())
@@ -344,8 +261,9 @@ class LoginWindow(QtWidgets.QWidget):
         blur_fx.setBlurRadius(15)
         self.blurred_bg.setGraphicsEffect(blur_fx)
 
-        # Copiamos del fondo oscuro inicialmente
-        self.blurred_bg.setPixmap(self.bg_dark.copy(self.panel_rect))
+        # Copiamos del fondo correspondiente inicialmente
+        base_pix = self.bg_dark if self.is_dark else self.bg_light
+        self.blurred_bg.setPixmap(base_pix.copy(self.panel_rect))
         self.blurred_bg.setGeometry(self.panel_rect)
 
         # — Panel central semitransparente —
@@ -535,54 +453,7 @@ class LoginWindow(QtWidgets.QWidget):
             else QtGui.QColor(255,200,50,180)
         )
 
-        # — Inicializar en modo oscuro (“luna”) —
-        self.is_dark = True
-        dark_ss = """
-            QWidget {
-                background-color: #2b2b2b;
-                color: #f0f0f0;
-            }
-            /* panel seminegro */
-            QFrame {
-                background-color: rgba(0,0,0,125);
-                border-radius: 20px;
-            }
-            /* campos de texto oscuros */
-            QLineEdit {
-                background-color: rgba(0,0,0,200);
-                color: #f0f0f0;
-                font-size: 15px;
-                border-radius: 15px;
-                padding: 8px 12px;
-            }
-            /* botones generales */
-            QPushButton {
-                background-color: #007BFF;
-                color: #ffffff;
-                border-radius: 25px;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                background-color: #339CFF;
-            }
-            /* “Olvidaste tu contraseña” */
-            QPushButton#forgotBtn {
-                background-color: transparent;
-                color: #ffffff;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            QPushButton#forgotBtn:hover {
-                color: #339CFF;
-            }
-        """
-        # Aplica el stylesheet global
-        QtWidgets.QApplication.instance().setStyleSheet(dark_ss)
-
-        # Icono y glow de luna
-        self.theme_btn.setIcon(self.moon_icon)
-        self.theme_btn.setIconSize(QtCore.QSize(50, 50))
-        self.glow.setColor(QtGui.QColor(200,200,255,180))  # brillo frío
+        self.apply_theme(self.is_dark)
 
 
     def center_on_screen(self):
@@ -626,98 +497,18 @@ class LoginWindow(QtWidgets.QWidget):
         self.close()
         self.recover_window = RecuperarContrasenaWindow(login_window=self)
         self.recover_window.show()
-        
-    def toggle_theme(self):
+
+    def apply_theme(self, dark: bool):
         app = QtWidgets.QApplication.instance()
-        settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
-
-        if self.is_dark:
-            # → PASAR A CLARO
-            light_ss = """
-                /* FONDO Y TEXTO GENERAL */
-                QWidget {
-                    background-color: #f4f4f9;
-                    color: #000000;
-                }
-                /* PANEL CENTRAL */
-               QFrame#centralPanel {
-                    background-color: rgba(255,255,255, 200);   /* menos transparente */
-                    border-radius: 20px;
-                    border: 1px solid rgba(0,0,0,0.1);           /* ligero borde para definición */
-                }
-                QLineEdit {
-                    background-color: #ffffff;   /* fondo 100% blanco */
-                    color: #000000;
-                    border: 1px solid rgba(0,0,0,0.15);
-                    border-radius: 15px;
-                    font-size: 15px;
-                    padding: 8px 12px;
-                }
-                /* Botón principal un poco más suave en claro */
-                QPushButton {
-                    background-color: #1E90FF;
-                    color: #ffffff;
-                    border-radius: 25px;
-                }
-                QPushButton:hover {
-                    background-color: #006FDE;
-                }
-                /* BOTÓN “¿Olvidaste tu contraseña?” */
-                QPushButton#forgotBtn {
-                    background-color: transparent;
-                    color: #000000;
-                    font-size: 18px;
-                    font-weight: bold;
-                }
-                QPushButton#forgotBtn:hover {
-                    color: #339CFF;
-                }
-            """
-            self.bg_label.setPixmap(self.bg_light)
-            self.blurred_bg.setPixmap(self.bg_light.copy(self.panel_rect))
-            self.lbl_doc.setPixmap(self.doc_icon_light)
-            self.lbl_pwd.setPixmap(self.lock_icon_light)
-            self.logo_label.setPixmap(self.pix_light)
-            self.theme_btn.setIcon(self.sun_icon)
-            self.glow.setColor(QtGui.QColor(255,200,50,180))
-
-        else:
-            # → PASAR A OSCURO
-            dark_ss = """
-                QWidget {
-                    background-color: #2b2b2b;
-                    color: #f0f0f0;
-                }
-                QFrame#centralPanel {
-                    background-color: rgba(0,0,0,125);
-                    border-radius: 20px;
-                    border: 1px solid rgba(0,0,0,0.1);  
-                }
-                QLineEdit {
-                    background-color: rgba(0,0,0,200);
-                    color: #f0f0f0;
-                    border: 1px solid rgba(0,0,0,0.15);
-                    border-radius: 15px;
-                    font-size: 15px;
-                    padding: 8px 12px;
-                }
-                QPushButton {
-                    background-color: #007BFF;
-                    color: #ffffff;
-                    border-radius: 25px;
-                }
-                QPushButton:hover {
-                    background-color: #339CFF;
-                }
-                QPushButton#forgotBtn {
-                    background-color: transparent;
-                    color: #ffffff;
-                    font-size: 18px;
-                    font-weight: bold;
-                }
-                QPushButton#forgotBtn:hover {
-                    color: #339CFF;
-                }
+        if dark:
+            style = """
+                QWidget { background-color: #2b2b2b; color: #f0f0f0; }
+                QFrame#centralPanel { background-color: rgba(0,0,0,125); border-radius: 20px; }
+                QLineEdit { background-color: rgba(0,0,0,200); color: #f0f0f0; font-size: 15px; border-radius: 15px; padding: 8px 12px; }
+                QPushButton { background-color: #007BFF; color: #ffffff; border-radius: 25px; font-size: 16px; }
+                QPushButton:hover { background-color: #339CFF; }
+                QPushButton#forgotBtn { background-color: transparent; color: #ffffff; font-size: 18px; font-weight: bold; }
+                QPushButton#forgotBtn:hover { color: #339CFF; }
             """
             self.bg_label.setPixmap(self.bg_dark)
             self.blurred_bg.setPixmap(self.bg_dark.copy(self.panel_rect))
@@ -726,12 +517,29 @@ class LoginWindow(QtWidgets.QWidget):
             self.logo_label.setPixmap(self.pix_dark)
             self.theme_btn.setIcon(self.moon_icon)
             self.glow.setColor(QtGui.QColor(200,200,255,180))
-
-        # Aplica TODO el CSS de una sola vez:
-        app.setStyleSheet(light_ss if self.is_dark else dark_ss)
-        # Invertimos el estado actual
+        else:
+            style = """
+                QWidget { background-color: #f4f4f9; color: #000000; }
+                QFrame#centralPanel { background-color: rgba(255,255,255, 200); border-radius: 20px; border: 1px solid rgba(0,0,0,0.1); }
+                QLineEdit { background-color: #ffffff; color: #000000; border: 1px solid rgba(0,0,0,0.15); border-radius: 15px; font-size: 15px; padding: 8px 12px; }
+                QPushButton { background-color: #1E90FF; color: #ffffff; border-radius: 25px; }
+                QPushButton:hover { background-color: #006FDE; }
+                QPushButton#forgotBtn { background-color: transparent; color: #000000; font-size: 18px; font-weight: bold; }
+                QPushButton#forgotBtn:hover { color: #339CFF; }
+            """
+            self.bg_label.setPixmap(self.bg_light)
+            self.blurred_bg.setPixmap(self.bg_light.copy(self.panel_rect))
+            self.lbl_doc.setPixmap(self.doc_icon_light)
+            self.lbl_pwd.setPixmap(self.lock_icon_light)
+            self.logo_label.setPixmap(self.pix_light)
+            self.theme_btn.setIcon(self.sun_icon)
+            self.glow.setColor(QtGui.QColor(255,200,50,180))
+        app.setStyleSheet(style)
+        
+    def toggle_theme(self):
+        settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
         self.is_dark = not self.is_dark
-        # Guardamos el tema resultante para próximas ejecuciones
+        self.apply_theme(self.is_dark)
         settings.setValue("theme", "dark" if self.is_dark else "light")
 
 # Función para enviar código por correo
