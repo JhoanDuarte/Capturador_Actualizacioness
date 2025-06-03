@@ -2644,9 +2644,10 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     # Validar y guardar en BD
     # -----------------------------
     def validate_and_save(final):
-    # ¿Alguna observación completada?
+        # 1) ¿Alguna observación completada?
         any_obs = any(
-            dv.get('OBSERVACION', {}).get('var').get().strip()
+            (lambda v: v.get().strip())(dv.get('OBSERVACION', {}).get('var'))
+            if dv.get('OBSERVACION', {}).get('var') else False
             for dv in detail_vars
         )
         ok = True
