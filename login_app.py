@@ -41,7 +41,7 @@ UPDATE_JSON_URL = "https://raw.githubusercontent.com/JhoanDuarte/Capturador_Actu
 try:
     from version import __version__ as local_version
 except ImportError:
-    local_version = "1.3.1"  # Si no hay versión, se forzará la actualización
+    local_version = "1.3.2"  # Si no hay versión, se forzará la actualización
 
 import os
 import sys
@@ -642,7 +642,7 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
 
         # — Definimos tamaño del panel y calculamos su posición centrada —
         panel_width  = 400
-        panel_height = self.height() - 60
+        panel_height = self.height() - 160
         x = (self.width() - panel_width) // 2
         y = (self.height() - panel_height) // 2
         self.panel_rect = QtCore.QRect(x, y, panel_width, panel_height)
