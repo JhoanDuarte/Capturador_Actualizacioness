@@ -41,15 +41,13 @@ UPDATE_JSON_URL = "https://raw.githubusercontent.com/JhoanDuarte/Capturador_Actu
 try:
     from version import __version__ as local_version
 except ImportError:
-    local_version = "1.3.2"  # Si no hay versión, se forzará la actualización
+    local_version = "1.3.1"  # Si no hay versión, se forzará la actualización
 
 import os
 import sys
 import requests
 import tkinter as tk
 from tkinter import messagebox
-import shutil
-import zipfile
 
 def get_target_zip_path(version):
     # Misma lógica de antes
@@ -92,33 +90,6 @@ def show_update_required_window(zip_path, version):
     # Al destruir la ventana, matamos el proceso para que no siga al login
     os._exit(0)
 
-def install_update_and_restart(zip_path):
-    """Extrae el ZIP de actualización y reinicia la aplicación."""
-    app_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
-    root_dir = os.path.abspath(os.path.join(app_dir, "..", ".."))
-    temp_dir = os.path.join(root_dir, "update_tmp")
-
-    if os.path.exists(temp_dir):
-        shutil.rmtree(temp_dir)
-    os.makedirs(temp_dir, exist_ok=True)
-
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(temp_dir)
-
-    for folder in ("build", "dist"):
-        src = os.path.join(temp_dir, folder)
-        dst = os.path.join(root_dir, folder)
-        if os.path.exists(src):
-            if os.path.exists(dst):
-                shutil.rmtree(dst)
-            shutil.move(src, dst)
-
-    shutil.rmtree(temp_dir)
-
-    new_exe = os.path.join(root_dir, "dist", "Dashboard-Capturacion-Datos", "login_app.exe")
-    subprocess.Popen([new_exe])
-    os._exit(0)
-
 def check_for_update_and_exit_if_needed():
     try:
         # Descargamos el JSON de versiones
@@ -140,8 +111,8 @@ def check_for_update_and_exit_if_needed():
                 with open(zip_path, "wb") as f:
                     f.write(r2.content)
 
-            # Instala la actualización y reinicia la aplicación
-            install_update_and_restart(zip_path)
+            # Muestra ventana y, al cerrarla o pulsar el botón, sale todo
+            show_update_required_window(zip_path, remote_version)
 
         # Si la versión es la misma, simplemente retorna y deja continuar al login
     except Exception as e:
@@ -640,13 +611,13 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
         self.setFixedSize(self.width(), self.height())
 
-        # — Definimos tamaño del panel y calculamos su posición centrada —
+        # — Panel centrado de 400×(altura−60) —
         panel_width  = 400
         panel_height = self.height() - 160
         x = (self.width() - panel_width) // 2
         y = (self.height() - panel_height) // 2
         self.panel_rect = QtCore.QRect(x, y, panel_width, panel_height)
-
+        
         # — Fondos escalados con suavizado —
         self.bg_dark = QtGui.QPixmap(resource_path("FondoLoginDark.png")) \
             .scaled(self.size(), QtCore.Qt.IgnoreAspectRatio, QtCore.Qt.SmoothTransformation)
@@ -767,7 +738,7 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         vbox.addWidget(btn_send, alignment=QtCore.Qt.AlignCenter)
         vbox.addStretch(2)
 
-        # — Centramos manualmente el panel y el fondo difuminado —
+        # — Centrar el panel dentro de la ventana —
         x = (self.width() - self.panel_rect.width()) // 2
         y = (self.height() - self.panel_rect.height()) // 2
         self.panel_rect.moveTo(x, y)
