@@ -642,7 +642,7 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
 
         # — Definimos tamaño del panel y calculamos su posición centrada —
         panel_width  = 400
-        panel_height = self.height() - 60
+        panel_height = self.height() - 120
         x = (self.width() - panel_width) // 2
         y = (self.height() - panel_height) // 2
         self.panel_rect = QtCore.QRect(x, y, panel_width, panel_height)
