@@ -48,6 +48,8 @@ import sys
 import requests
 import tkinter as tk
 from tkinter import messagebox
+import shutil
+import zipfile
 
 def get_target_zip_path(version):
     # Misma lógica de antes
@@ -90,6 +92,33 @@ def show_update_required_window(zip_path, version):
     # Al destruir la ventana, matamos el proceso para que no siga al login
     os._exit(0)
 
+def install_update_and_restart(zip_path):
+    """Extrae el ZIP de actualización y reinicia la aplicación."""
+    app_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
+    root_dir = os.path.abspath(os.path.join(app_dir, "..", ".."))
+    temp_dir = os.path.join(root_dir, "update_tmp")
+
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+    os.makedirs(temp_dir, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(temp_dir)
+
+    for folder in ("build", "dist"):
+        src = os.path.join(temp_dir, folder)
+        dst = os.path.join(root_dir, folder)
+        if os.path.exists(src):
+            if os.path.exists(dst):
+                shutil.rmtree(dst)
+            shutil.move(src, dst)
+
+    shutil.rmtree(temp_dir)
+
+    new_exe = os.path.join(root_dir, "dist", "Dashboard-Capturacion-Datos", "login_app.exe")
+    subprocess.Popen([new_exe])
+    os._exit(0)
+
 def check_for_update_and_exit_if_needed():
     try:
         # Descargamos el JSON de versiones
@@ -111,8 +140,8 @@ def check_for_update_and_exit_if_needed():
                 with open(zip_path, "wb") as f:
                     f.write(r2.content)
 
-            # Muestra ventana y, al cerrarla o pulsar el botón, sale todo
-            show_update_required_window(zip_path, remote_version)
+            # Instala la actualización y reinicia la aplicación
+            install_update_and_restart(zip_path)
 
         # Si la versión es la misma, simplemente retorna y deja continuar al login
     except Exception as e:
