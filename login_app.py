@@ -640,13 +640,12 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
         self.setFixedSize(self.width(), self.height())
 
-        # — Panel centrado de 400×(altura−60) —
-        self.panel_rect = QtCore.QRect(
-            50,
-            30,
-            400,
-            self.height() - 60
-        )
+        # — Definimos tamaño del panel y calculamos su posición centrada —
+        panel_width  = 400
+        panel_height = self.height() - 60
+        x = (self.width() - panel_width) // 2
+        y = (self.height() - panel_height) // 2
+        self.panel_rect = QtCore.QRect(x, y, panel_width, panel_height)
 
         # — Fondos escalados con suavizado —
         self.bg_dark = QtGui.QPixmap(resource_path("FondoLoginDark.png")) \
@@ -768,15 +767,12 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         vbox.addWidget(btn_send, alignment=QtCore.Qt.AlignCenter)
         vbox.addStretch(2)
 
-        # — Centrar el panel dentro de la ventana —
-        main_layout = QtWidgets.QVBoxLayout(self)
-        main_layout.addStretch()
-        h_center = QtWidgets.QHBoxLayout()
-        h_center.addStretch()
-        h_center.addWidget(self.panel)
-        h_center.addStretch()
-        main_layout.addLayout(h_center)
-        main_layout.addStretch()
+        # — Centramos manualmente el panel y el fondo difuminado —
+        x = (self.width() - self.panel_rect.width()) // 2
+        y = (self.height() - self.panel_rect.height()) // 2
+        self.panel_rect.moveTo(x, y)
+        self.panel.setGeometry(self.panel_rect)
+        self.blurred_bg.setGeometry(self.panel_rect)
 
         
     def closeEvent(self, event):
