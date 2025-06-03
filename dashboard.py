@@ -1234,6 +1234,28 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
             return ok
 
+    def reset_form():
+        """Limpia todos los campos del formulario y deja solo el bloque inicial"""
+        nonlocal dynamic_row, dynamic_col
+
+        for var in field_vars.values():
+            var.set("")
+
+        for dv in detail_vars:
+            for info in dv.values():
+                if isinstance(info, dict):
+                    info['var'].set("")
+
+        while len(service_frames) > 1:
+            last_frames = service_frames.pop()
+            for f in last_frames:
+                f.destroy()
+            detail_vars.pop()
+
+        dynamic_row = fixed_row + 1
+        dynamic_col = 0
+        btn_del.configure(state='disabled')
+
     def do_save(final=False):
         if not validate_and_save(final):
             return
@@ -1338,6 +1360,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             win.after_idle(win.destroy)
             return
         else:
+            reset_form()
             # En lugar de win.destroy + reiniciar toda la función,
             # simplemente recargamos la siguiente asignación
             if not load_assignment():
@@ -2690,7 +2713,29 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                         w.configure(border_color='#2b2b2b', border_width=1)
 
         return ok
-    
+
+    def reset_form():
+        """Limpia el formulario para la siguiente asignación"""
+        nonlocal dynamic_row, dynamic_col
+
+        for var in field_vars.values():
+            var.set("")
+
+        for dv in detail_vars:
+            for info in dv.values():
+                if isinstance(info, dict):
+                    info['var'].set("")
+
+        while len(service_frames) > 1:
+            last_frames = service_frames.pop()
+            for f in last_frames:
+                f.destroy()
+            detail_vars.pop()
+
+        dynamic_row = fixed_row + 1
+        dynamic_col = 0
+        btn_del.configure(state='disabled')
+
     def do_save(final=False):
         if not validate_and_save(final):
             return
@@ -2798,6 +2843,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             return
 
         else:
+            reset_form()
             # En lugar de win.destroy + reiniciar toda la función,
             # simplemente recargamos la siguiente asignación
             if not load_assignment():
