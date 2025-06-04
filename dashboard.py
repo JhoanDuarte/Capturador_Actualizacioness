@@ -969,6 +969,14 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         
         skip_obs = len(detail_vars) >= 1
 
+        # Start a new row if the last block did not end at column 0.
+        # This prevents overlaps when the number of fields isn't a
+        # multiple of three.
+        if dynamic_col != 0:
+            dynamic_row += 1
+            dynamic_col = 0
+
+
         for campo, icon_url in DETAIL_ICONS.items():
             if campo not in campos_paquete:
                 continue
@@ -2457,6 +2465,10 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         current_frames = []
         
         skip_obs = len(detail_vars) >= 1
+        # Start a new row if the last block did not end at column 0
+        if dynamic_col != 0:
+            dynamic_row += 1
+            dynamic_col = 0
 
         for campo, icon_url in DETAIL_ICONS.items():
             if campo not in campos_paquete:
