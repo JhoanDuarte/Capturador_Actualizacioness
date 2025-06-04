@@ -961,7 +961,25 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     
     dynamic_row = fixed_row + 1  # agrega estas variables ANTES de la función
     dynamic_col = 0
-    
+
+    def reflow_service_blocks():
+        """Recoloca todos los bloques de servicio en orden."""
+        nonlocal dynamic_row, dynamic_col
+        row = fixed_row + 1
+        col = 0
+        for frames in service_frames:
+            for frm in frames:
+                frm.grid_configure(row=row, column=col)
+                col += 1
+                if col == 3:
+                    col = 0
+                    row += 1
+            if col != 0:
+                row += 1
+                col = 0
+        dynamic_row = row
+        dynamic_col = col
+
     def add_service_block():
         nonlocal dynamic_row, dynamic_col
         dv = {}
@@ -1038,7 +1056,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
                     return P == "" or P.isalnum()
                 vcmd_cs = (win.register(only_alphanum), '%P')
 
-                def to_upper_and_filter(*args):
+                def to_upper_and_filter(*args, var=var):
                     txt = var.get()
                     filtered = ''.join(ch for ch in txt if ch.isalnum()).upper()
                     if txt != filtered:
@@ -1140,6 +1158,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         if len(service_frames) > 1:
             btn_del.configure(state='normal')
 
+        reflow_service_blocks()
+
 
     if any(c in campos_paquete for c in DETAIL_ICONS):
         add_service_block()
@@ -1169,6 +1189,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             # Si ya no hay más servicios adicionales, desactivar botón
             if len(service_frames) <= 1:
                 btn_del.configure(state='disabled')
+
+            reflow_service_blocks()
 
     # -----------------------------
     # Validar y guardar en BD
@@ -2458,6 +2480,24 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     
     dynamic_row = fixed_row + 1  # agrega estas variables ANTES de la función
     dynamic_col = 0
+    def reflow_service_blocks():
+        """Recoloca todos los bloques de servicio en orden."""
+        nonlocal dynamic_row, dynamic_col
+        row = fixed_row + 1
+        col = 0
+        for frames in service_frames:
+            for frm in frames:
+                frm.grid_configure(row=row, column=col)
+                col += 1
+                if col == 3:
+                    col = 0
+                    row += 1
+            if col != 0:
+                row += 1
+                col = 0
+        dynamic_row = row
+        dynamic_col = col
+
     
     def add_service_block():
         nonlocal dynamic_row, dynamic_col
@@ -2523,7 +2563,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                     return P == "" or P.isalnum()
                 vcmd_cs = (win.register(only_alphanum), '%P')
 
-                def to_upper_and_filter(*args):
+                def to_upper_and_filter(*args, var=var):
                     txt = var.get()
                     filtered = ''.join(ch for ch in txt if ch.isalnum()).upper()
                     if txt != filtered:
@@ -2625,6 +2665,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         if len(service_frames) > 1:
             btn_del.configure(state='normal')
 
+        reflow_service_blocks()
 
     if any(c in campos_paquete for c in DETAIL_ICONS):
         add_service_block()
@@ -2654,6 +2695,8 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
             if len(service_frames) <= 1:
                 btn_del.configure(state='disabled')
+
+            reflow_service_blocks()
 
     # -----------------------------
     # Validar y guardar en BD
