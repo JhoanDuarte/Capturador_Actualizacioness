@@ -1352,9 +1352,12 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
         # --- 5) Cerrar ventana y continuar/volver ---
         if final:
-            entry_fecha.unbind("<KeyRelease>")
-            entry_fecha.unbind("<FocusOut>")
-
+            # Desvincular eventos de fecha(s) existentes
+            for campo in ('FECHA_SERVICIO', 'FECHA_SERVICIO_FINAL'):
+                if campo in widgets:
+                    widgets[campo].unbind("<KeyRelease>")
+                    widgets[campo].unbind("<FocusOut>")
+            
             # 2) Y programamos la destrucción en el idle loop,
             #    así los callbacks que ya estén en cola pueden finalizar sin error.
             win.after_idle(win.destroy)
@@ -2835,9 +2838,12 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
         # --- 5) Cerrar ventana y continuar/volver ---
         if final:
-            entry_fecha.unbind("<KeyRelease>")
-            entry_fecha.unbind("<FocusOut>")
-
+            # Desvincular eventos de fecha(s) existentes
+            for campo in ('FECHA_SERVICIO', 'FECHA_SERVICIO_FINAL'):
+                if campo in widgets:
+                    widgets[campo].unbind("<KeyRelease>")
+                    widgets[campo].unbind("<FocusOut>")
+            
             # 2) Y programamos la destrucción en el idle loop,
             #    así los callbacks que ya estén en cola pueden finalizar sin error.
             win.after_idle(win.destroy)
