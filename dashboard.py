@@ -5413,14 +5413,21 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # 4) Detectar duplicados
         rad = [safe_int(v) for v in df['RADICADO'] if pd.notna(v)]
         if rad:
-            placeholders = ','.join('%s' for _ in rad)
-            q = f"SELECT RADICADO FROM ASIGNACION_TIPIFICACION WHERE RADICADO IN ({placeholders})"
             cur = self.conn.cursor()
-            cur.execute(q, rad)
-            exist = {r[0] for r in cur.fetchall()}
+            exist = set()
+            MAX_PARAMS = 2000
+            for i in range(0, len(rad), MAX_PARAMS):
+                chunk = rad[i:i + MAX_PARAMS]
+                placeholders = ','.join('%s' for _ in chunk)
+                q = (
+                    "SELECT RADICADO FROM ASIGNACION_TIPIFICACION "
+                    f"WHERE RADICADO IN ({placeholders})"
+                )
+                cur.execute(q, chunk)
+                exist.update(r[0] for r in cur.fetchall())
             cur.close()
             if exist:
-                return messagebox.showerror("Duplicados","Existen: %s" % exist)
+                return messagebox.showerror("Duplicados", "Existen: %s" % exist)
 
         # 5) Calcular NUM_PAQUETE
         cur = self.conn.cursor()
@@ -5460,7 +5467,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 num_paquete
             ))
 
-        # 7) Insertar en BD
+        # 7) Insertar en BD con barra de progreso
         sql_insert = '''
         INSERT INTO ASIGNACION_TIPIFICACION
         (RADICADO,NIT,RAZON_SOCIAL,FACTURA,VALOR_FACTURA,
@@ -5469,19 +5476,37 @@ class DashboardWindow(QtWidgets.QMainWindow):
         LINEA,ID_ASIGNACION,ESTADO_PYS,OBSERVACION_PYS,
         LINEA_PYS,RANGOS,DEF,TIPO_PAQUETE,STATUS_ID,NUM_PAQUETE)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'''
+
+        progress_win = ctk.CTkToplevel(self._tk_root)
+        progress_win.title("Cargando paquete")
+        pb = ctk.CTkProgressBar(progress_win, width=300)
+        pb.pack(padx=20, pady=20)
+        pb.set(0)
+        progress_win.update_idletasks()
+
         cur = self.conn.cursor()
         try:
-            try: cur.fast_executemany = True
-            except: pass
+            try:
+                cur.fast_executemany = True
+            except Exception:
+                pass
             cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION ON;")
-            cur.executemany(sql_insert, rows)
+            batch_size = 500
+            total = len(rows)
+            for i in range(0, total, batch_size):
+                batch = rows[i:i + batch_size]
+                cur.executemany(sql_insert, batch)
+                pb.set((i + len(batch)) / total)
+                progress_win.update_idletasks()
             cur.execute("SET IDENTITY_INSERT ASIGNACION_TIPIFICACION OFF;")
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()
             cur.close()
+            progress_win.destroy()
             return messagebox.showerror("Error inserción", str(e))
         cur.close()
+        progress_win.destroy()
 
         # 8) Confirmar conteo
         cur2 = self.conn.cursor()
