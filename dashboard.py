@@ -390,7 +390,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     entry_nit_var      = tk.StringVar()
     entry_factura_var  = tk.StringVar()
 
-    
+
     # 1) Obtener paquete pendiente para el usuario o el más antiguo disponible
     cur = conn.cursor()
     cur.execute(
@@ -418,6 +418,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             ("DIGITACION",),
         )
         pkg = cur.fetchone()[0] or 0
+
     tipo_paquete = "DIGITACION"
     cur.close()
 
@@ -1887,6 +1888,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
     entry_factura_var  = tk.StringVar()
+
     # 1) Carga paquete asignado al usuario o el más antiguo pendiente
     cur = conn.cursor()
     cur.execute(
@@ -1914,6 +1916,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             ("CALIDAD",),
         )
         pkg = cur.fetchone()[0] or 0
+
     tipo_paquete = "CALIDAD"
     cur.close()
     
@@ -1981,6 +1984,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             conn.commit()
         else:
             radicado, nit, factura = row
+
         cur.close()
 
         entry_radicado_var.set(str(radicado))
