@@ -3282,22 +3282,17 @@ def ver_progreso(root, conn):
         cur3 = conn.cursor()
         sql2 = (
             "SELECT "
-            "  COALESCE(u_t.ID, u_a.ID) AS ID, "
-            "  COALESCE(u_t.FIRST_NAME + ' ' + u_t.LAST_NAME, "
-            "           u_a.FIRST_NAME + ' ' + u_a.LAST_NAME, 'SIN USUARIO') AS USUARIO, "
+            "  u.ID AS ID, "
+            "  u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO, "
             "  SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
             "  SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
             "  SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "LEFT JOIN USERS u_a ON a.USER_ASIGNED = u_a.ID "
-            "LEFT JOIN USERS u_t ON t.USER_ID = u_t.ID "
-            "LEFT JOIN USERS u   ON COALESCE(t.USER_ID, a.USER_ASIGNED) = u.ID "
+            "LEFT JOIN USERS u ON a.USER_ASIGNED = u.ID "
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
             f"WHERE {where} AND s.ID <= 4 "
-            "GROUP BY COALESCE(u_t.ID, u_a.ID), "
-            "         COALESCE(u_t.FIRST_NAME + ' ' + u_t.LAST_NAME, "
-            "                  u_a.FIRST_NAME + ' ' + u_a.LAST_NAME) "
+            "GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME "
             "ORDER BY USUARIO"
         )
         cur3.execute(sql2, params)
@@ -3681,7 +3676,7 @@ def ver_progreso(root, conn):
     ctk.CTkButton(sidebar, text="Exportar", command=exportar, width=100).grid(row=5, column=0, columnspan=2, pady=(10,0))
     # Filtro de estados
     cur = conn.cursor()
-    cur.execute("SELECT NAME FROM STATUS ORDER BY NAME")
+    cur.execute("SELECT NAME FROM STATUS WHERE ID BETWEEN 1 AND 4 ORDER BY NAME")
     estados = [r[0] for r in cur.fetchall()]
     cur.close()
     ctk.CTkLabel(sidebar, text="Estado:").grid(row=6, column=0, sticky="w", pady=(10,5))
