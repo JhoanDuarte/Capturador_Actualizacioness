@@ -3281,21 +3281,16 @@ def ver_progreso(root, conn):
         # 1) Conteos por usuario
         cur3 = conn.cursor()
         sql2 = (
-            "SELECT "
-            "  COALESCE(u_t.ID, u_a.ID) AS ID, "
-            "  COALESCE(u_t.FIRST_NAME + ' ' + u_t.LAST_NAME, "
-            "           u_a.FIRST_NAME + ' ' + u_a.LAST_NAME, 'SIN USUARIO') AS USUARIO, "
-            "  SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
-            "  SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
-            "  SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
+            "SELECT u.ID, "
+            "       u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO, "
+            "       SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
+            "       SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
+            "       SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "LEFT JOIN USERS u_a ON a.USER_ASIGNED = u_a.ID "
-            "LEFT JOIN USERS u_t ON t.USER_ID = u_t.ID "
+            "JOIN USERS u ON u.ID = CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END "
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
-            f"WHERE {where} AND s.ID <= 4 "
-            "GROUP BY COALESCE(u_t.ID, u_a.ID), u_t.FIRST_NAME, u_t.LAST_NAME, u_a.FIRST_NAME, u_a.LAST_NAME "
-            "ORDER BY USUARIO"
+            f"WHERE {where} AND s.ID <= 4 GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME ORDER BY USUARIO"
         )
         cur3.execute(sql2, params)
         rows2 = cur3.fetchall()
@@ -3800,20 +3795,16 @@ def actualizar_tabs(win, conn, num_paquete,where, params):
 
     cur = conn.cursor()
     cur.execute("""
-        SELECT COALESCE(u_t.ID, u_a.ID) AS ID,
-               COALESCE(u_t.FIRST_NAME + ' ' + u_t.LAST_NAME,
-                        u_a.FIRST_NAME + ' ' + u_a.LAST_NAME,
-                        'SIN USUARIO') AS USUARIO,
+        SELECT u.ID,
+               u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO,
                SUM(CASE WHEN at.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES,
                SUM(CASE WHEN at.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS,
                SUM(CASE WHEN at.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS
           FROM ASIGNACION_TIPIFICACION at
           LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = at.RADICADO
-          LEFT JOIN USERS u_a ON at.USER_ASIGNED = u_a.ID
-          LEFT JOIN USERS u_t ON t.USER_ID = u_t.ID
+          JOIN USERS u ON u.ID = CASE WHEN at.STATUS_ID=2 THEN at.USER_ASIGNED ELSE t.USER_ID END
          WHERE at.NUM_PAQUETE = %s AND at.STATUS_ID <= 4
-         GROUP BY COALESCE(u_t.ID, u_a.ID), u_t.FIRST_NAME, u_t.LAST_NAME,
-                  u_a.FIRST_NAME, u_a.LAST_NAME
+         GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME
          ORDER BY USUARIO
     """, (num_paquete,))
     usuarios = cur.fetchall(); cur.close()
