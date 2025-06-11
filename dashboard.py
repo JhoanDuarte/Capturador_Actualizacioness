@@ -165,7 +165,7 @@ class AutocompleteEntry(ctk.CTkEntry):
         if not txt:
             return self._hide_listbox()
 
-        matches = [v for v in self._values if v.lower().startswith(txt)]
+        matches = [v for v in self._values if txt in v.lower()]
         if not matches:
             return self._hide_listbox()
 
@@ -4520,7 +4520,48 @@ if "--crear-usuario" in sys.argv:
                     rol_vars[rid] = var_chk
                     ctk.CTkCheckBox(chk_frame, text=rname, variable=var_chk).grid(row=j, column=0, sticky="w", pady=2)
 
-                # Función para guardar usuario
+                # Función auxiliar de inserción en BD
+                def _insertar_usuario(first, last, num_doc, email_addr):
+                    type_id = tipo_map[tipo_var.get()]
+                    cursor = self.conn.cursor()
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM USERS WHERE TYPE_DOC_ID=%s AND NUM_DOC=%s",
+                        (type_id, num_doc)
+                    )
+                    if cursor.fetchone()[0] > 0:
+                        cursor.close()
+                        raise ValueError("Usuario duplicado")
+
+                    raw_pwd = pwd_var.get().strip()
+                    pwd_bytes = raw_pwd.encode('utf-8')
+                    salt = bcrypt.gensalt(rounds=12)
+                    pwd_hash = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+                    status_id = status_map[stat_var.get()]
+                    selected = [rid for rid, v in rol_vars.items() if v.get()]
+
+                    cursor.execute(
+                        """
+                        INSERT INTO USERS
+                        (FIRST_NAME, LAST_NAME, TYPE_DOC_ID, NUM_DOC, PASSWORD, CORREO, STATUS_ID)
+                        OUTPUT INSERTED.ID
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (first, last, type_id, num_doc, pwd_hash, email_addr, status_id)
+                    )
+                    new_id = cursor.fetchone()[0]
+
+                    for rid in selected:
+                        cursor.execute(
+                            "INSERT INTO USER_ROLES (USER_ID, ROL_ID) VALUES (%s, %s)",
+                            (new_id, rid)
+                        )
+
+                    self.conn.commit()
+                    cursor.close()
+                    return new_id
+
+                # Función para guardar usuario manual
                 def guardar_usuario(event=None):
                     # Validar campos
                     if not all([fn_var.get(), ln_var.get(), doc_var.get(), pwd_var.get(), email_var.get()]):
@@ -4544,62 +4585,61 @@ if "--crear-usuario" in sys.argv:
                         return
 
                     try:
-                        first_name = fn_var.get().strip()
-                        last_name  = ln_var.get().strip()
-                        num_doc    = int(doc_var.get().strip())
-                        email_address = email  # Correo ingresado por el usuario
-                        type_id    = tipo_map[tipo_var.get()]
-
-                        # Verificar duplicado
-                        cursor = self.conn.cursor()
-                        cursor.execute(
-                            "SELECT COUNT(*) FROM USERS WHERE TYPE_DOC_ID = %s AND NUM_DOC = %s",
-                            (type_id, num_doc)
+                        new_id = _insertar_usuario(
+                            fn_var.get().strip(),
+                            ln_var.get().strip(),
+                            int(doc_var.get().strip()),
+                            email
                         )
-                        if cursor.fetchone()[0] > 0:
-                            cursor.close()
-                            messagebox.showerror("Duplicado", "Ya existe un usuario con ese tipo y número de documento.")
-                            return
-
-                        # Cifrar contraseña con bcrypt
-                        raw_pwd   = pwd_var.get().strip()
-                        pwd_bytes = raw_pwd.encode('utf-8')
-                        salt      = bcrypt.gensalt(rounds=12)
-                        pwd_hash  = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
-
-                        status_id = status_map[stat_var.get()]
-                        selected  = [rid for rid, v in rol_vars.items() if v.get()]
-
-                        # Insertar usuario
-                        cursor.execute(
-                            """
-                            INSERT INTO USERS 
-                            (FIRST_NAME, LAST_NAME, TYPE_DOC_ID, NUM_DOC, PASSWORD, CORREO, STATUS_ID)
-                            OUTPUT INSERTED.ID
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            """,
-                            (first_name, last_name, type_id, num_doc, pwd_hash, email_address, status_id)
-                        )
-                        new_id = cursor.fetchone()[0]
-
-                        # Insertar roles
-                        for rid in selected:
-                            cursor.execute(
-                                "INSERT INTO USER_ROLES (USER_ID, ROL_ID) VALUES (%s, %s)",
-                                (new_id, rid)
-                            )
-
-                        self.conn.commit()
-                        cursor.close()
                         messagebox.showinfo("Éxito", f"Usuario creado con ID {new_id}")
                         top.destroy()
-
                     except Exception as e:
                         messagebox.showerror("Error", str(e))
 
-                # Botón Guardar
+                def importar_excel():
+                    path = filedialog.askopenfilename(
+                        title="Archivo de usuarios",
+                        filetypes=[("Excel", "*.xls*")]
+                    )
+                    if not path:
+                        return
+                    try:
+                        df = pd.read_excel(path, header=None)
+                    except Exception as e:
+                        return messagebox.showerror("Error", f"No se pudo leer el archivo:\n{e}")
+
+                    usuarios = []
+                    for _, row in df.iterrows():
+                        try:
+                            num = int(str(row.iloc[0]).strip())
+                        except Exception:
+                            continue
+                        if len(row) >= 3:
+                            first = str(row.iloc[1]).strip()
+                            last = str(row.iloc[2]).strip()
+                        else:
+                            parts = str(row.iloc[1]).strip().split(" ", 1)
+                            first = parts[0] if parts else ""
+                            last = parts[1] if len(parts) > 1 else ""
+                        usuarios.append((first, last, num))
+
+                    if not usuarios:
+                        return messagebox.showinfo("Sin datos", "No se encontraron usuarios válidos")
+
+                    creados = 0
+                    for first, last, num in usuarios:
+                        try:
+                            _insertar_usuario(first, last, num, email_var.get().strip())
+                            creados += 1
+                        except Exception:
+                            continue
+                    messagebox.showinfo("Importación", f"Usuarios creados: {creados}")
+
+                # Botones
                 btn = ctk.CTkButton(frm, text="Guardar Usuario", command=guardar_usuario, width=200)
-                btn.grid(row=len(labels)+1, column=0, columnspan=2, pady=20)
+                btn.grid(row=len(labels)+1, column=0, columnspan=2, pady=(20,5))
+                btn_imp = ctk.CTkButton(frm, text="Cargar Excel", command=importar_excel, width=200)
+                btn_imp.grid(row=len(labels)+2, column=0, columnspan=2)
                 top.bind("<Return>", guardar_usuario)
         def run(self):
             self.crear_usuario()
