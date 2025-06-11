@@ -3272,18 +3272,71 @@ def ver_progreso(root, conn):
             font=("Arial", 10, "italic")
         ).grid(row=fila_final + 2, column=0, columnspan=2, sticky="w", padx=5, pady=4)
 
+        # --- Lista de pendientes ---
+        filtros_p = ["a.NUM_PAQUETE = %s"]
+        params_p = [pkg_sel]
+        tipo_p = var_tipo_paquete.get().strip()
+        if tipo_p:
+            filtros_p.append("a.TIPO_PAQUETE = %s")
+            params_p.append(tipo_p)
+
+        sel_usr_p = [u for u, v in user_vars.items() if v.get()]
+        if 0 < len(sel_usr_p) < len(usuarios):
+            ph = ", ".join("%s" for _ in sel_usr_p)
+            filtros_p.append(f"(u2.FIRST_NAME + ' ' + u2.LAST_NAME) IN ({ph})")
+            params_p.extend(sel_usr_p)
+
+        raw_p = rad_text.get("0.0", "end").strip()
+        if raw_p:
+            try:
+                lista_p = [int(r.strip()) for r in raw_p.splitlines() if r.strip()]
+            except ValueError:
+                messagebox.showwarning("Radicados inválidos", "Revisa la lista de radicados.")
+                return
+            if lista_p:
+                ph = ", ".join("%s" for _ in lista_p)
+                filtros_p.append(f"a.RADICADO IN ({ph})")
+                params_p.extend(lista_p)
+
+        filtros_p.append("a.STATUS_ID = 2")
+        where_p = " AND ".join(filtros_p)
+
+        cur_p = conn.cursor()
+        sql_p = (
+            "SELECT a.RADICADO, "
+            "       COALESCE(u2.FIRST_NAME + ' ' + u2.LAST_NAME, '') AS USUARIO "
+            "FROM ASIGNACION_TIPIFICACION a "
+            "LEFT JOIN USERS u2 ON a.USER_ASIGNED = u2.ID "
+            f"WHERE {where_p} "
+            "ORDER BY USUARIO, a.RADICADO"
+        )
+        cur_p.execute(sql_p, tuple(params_p))
+        rows_p = cur_p.fetchall()
+        cur_p.close()
+
+        start_row = fila_final + 4
+        ctk.CTkLabel(frame1, text="PENDIENTES", font=("Arial", 12, "bold"))\
+            .grid(row=start_row - 1, column=0, columnspan=2, sticky="w", padx=5, pady=(10,4))
+        headers_p = ["RADICADO", "USUARIO"]
+        for j, h in enumerate(headers_p):
+            ctk.CTkLabel(frame1, text=h, font=("Arial", 12, "bold"))\
+                .grid(row=start_row, column=j, padx=5, pady=4, sticky="w")
+        for i, row in enumerate(rows_p, start=1):
+            for j, val in enumerate(row):
+                ctk.CTkLabel(frame1, text=str(val))\
+                    .grid(row=start_row + i, column=j, padx=5, pady=2, sticky="w")
+
 
         # — Pestaña "Por Usuario" —
         frame2 = tabs.tab("Por Usuario")
         for w in frame2.winfo_children():
             w.destroy()
 
-        # 1) Conteos por usuario
+        # 1) Conteos de procesados y con observación por usuario
         cur3 = conn.cursor()
-        sql2 = (
+        sql_proc = (
             "SELECT u.ID, "
             "       u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO, "
-            "       SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
             "       SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
             "       SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
             "FROM ASIGNACION_TIPIFICACION a "
@@ -3292,9 +3345,51 @@ def ver_progreso(root, conn):
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
             f"WHERE {where} GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME ORDER BY USUARIO"
         )
-        cur3.execute(sql2, params)
-        rows2 = cur3.fetchall()
+        cur3.execute(sql_proc, params)
+        rows_proc = cur3.fetchall()
         cur3.close()
+
+        # 1b) Conteo de pendientes por usuario
+        filtros_p2 = ["a.NUM_PAQUETE = %s"]
+        params_p2 = [pkg_sel]
+        tipo_p2 = var_tipo_paquete.get().strip()
+        if tipo_p2:
+            filtros_p2.append("a.TIPO_PAQUETE = %s")
+            params_p2.append(tipo_p2)
+
+        sel_usr_p2 = [u for u, v in user_vars.items() if v.get()]
+        if 0 < len(sel_usr_p2) < len(usuarios):
+            ph = ", ".join("%s" for _ in sel_usr_p2)
+            filtros_p2.append(f"(u2.FIRST_NAME + ' ' + u2.LAST_NAME) IN ({ph})")
+            params_p2.extend(sel_usr_p2)
+
+        raw_p2 = rad_text.get("0.0", "end").strip()
+        if raw_p2:
+            try:
+                lista_p2 = [int(r.strip()) for r in raw_p2.splitlines() if r.strip()]
+            except ValueError:
+                messagebox.showwarning("Radicados inválidos", "Revisa la lista de radicados.")
+                return
+            if lista_p2:
+                ph = ", ".join("%s" for _ in lista_p2)
+                filtros_p2.append(f"a.RADICADO IN ({ph})")
+                params_p2.extend(lista_p2)
+
+        filtros_p2.append("a.STATUS_ID = 2")
+        where_p2 = " AND ".join(filtros_p2)
+
+        cur_p2 = conn.cursor()
+        sql_pend_cnt = (
+            "SELECT COALESCE(u2.ID, 0) AS ID, "
+            "       COALESCE(u2.FIRST_NAME + ' ' + u2.LAST_NAME, '') AS USUARIO, "
+            "       COUNT(*) AS PENDIENTES "
+            "FROM ASIGNACION_TIPIFICACION a "
+            "LEFT JOIN USERS u2 ON a.USER_ASIGNED = u2.ID "
+            f"WHERE {where_p2} GROUP BY u2.ID, u2.FIRST_NAME, u2.LAST_NAME"
+        )
+        cur_p2.execute(sql_pend_cnt, tuple(params_p2))
+        rows_pend = cur_p2.fetchall()
+        cur_p2.close()
 
         # 2) Intervalo promedio entre tipificaciones por usuario
         cur_int_u = conn.cursor()
@@ -3328,13 +3423,25 @@ def ver_progreso(root, conn):
         # convertir a dict {user_id: avg_sec}
         avg_by_user = {uid: sec for uid, sec in rows_int_user}
 
-        # Construir lista final de filas
+        # Construir lista final de filas combinando pendientes y procesados
+        pend_map = {uid: cnt for uid, _, cnt in rows_pend}
+        name_map = {uid: name for uid, name, _ in rows_pend}
+        for uid, name, proc, obs in rows_proc:
+            name_map[uid] = name
+            if uid not in pend_map:
+                pend_map[uid] = 0
+
         processed = []
-        for id_, usuario, pendientes, procesados, con_obs in rows2:
+        for uid in sorted(name_map.keys(), key=lambda i: name_map[i]):
+            usuario = name_map[uid]
+            pendientes = pend_map.get(uid, 0)
+            proc_row = next((r for r in rows_proc if r[0] == uid), None)
+            procesados = proc_row[2] if proc_row else 0
+            con_obs = proc_row[3] if proc_row else 0
             hechos = procesados + con_obs
-            avg_sec_user = avg_by_user.get(id_, 0)
+            avg_sec_user = avg_by_user.get(uid, 0)
             td_user = datetime.timedelta(seconds=int(avg_sec_user))
-            processed.append((id_, usuario, pendientes, procesados, con_obs, hechos, str(td_user)))
+            processed.append((uid, usuario, pendientes, procesados, con_obs, hechos, str(td_user)))
 
         headers = ["ID", "USUARIO", "PENDIENTES", "PROCESADOS", "CON_OBS", "TOTAL", "INTERVALO"]
         rows_per_page = 10
@@ -3388,61 +3495,6 @@ def ver_progreso(root, conn):
             .pack(pady=(10,0))
         ctk.CTkLabel(frame2, text=str(total_general), font=("Arial", 12, "bold"))\
             .pack()
-
-        # --- Pestaña "Pendientes" ---
-        frame3 = tabs.tab("Pendientes")
-        for w in frame3.winfo_children():
-            w.destroy()
-
-        filtros_p = ["a.NUM_PAQUETE = %s"]
-        params_p = [pkg_sel]
-        tipo_p = var_tipo_paquete.get().strip()
-        if tipo_p:
-            filtros_p.append("a.TIPO_PAQUETE = %s")
-            params_p.append(tipo_p)
-
-        sel_usr_p = [u for u, v in user_vars.items() if v.get()]
-        if 0 < len(sel_usr_p) < len(usuarios):
-            ph = ", ".join("%s" for _ in sel_usr_p)
-            filtros_p.append(f"(u2.FIRST_NAME + ' ' + u2.LAST_NAME) IN ({ph})")
-            params_p.extend(sel_usr_p)
-
-        raw_p = rad_text.get("0.0", "end").strip()
-        if raw_p:
-            try:
-                lista_p = [int(r.strip()) for r in raw_p.splitlines() if r.strip()]
-            except ValueError:
-                messagebox.showwarning("Radicados inválidos", "Revisa la lista de radicados.")
-                return
-            if lista_p:
-                ph = ", ".join("%s" for _ in lista_p)
-                filtros_p.append(f"a.RADICADO IN ({ph})")
-                params_p.extend(lista_p)
-
-        filtros_p.append("a.STATUS_ID = 2")
-        where_p = " AND ".join(filtros_p)
-
-        cur_p = conn.cursor()
-        sql_p = (
-            "SELECT a.RADICADO, "
-            "       COALESCE(u2.FIRST_NAME + ' ' + u2.LAST_NAME, '') AS USUARIO "
-            "FROM ASIGNACION_TIPIFICACION a "
-            "LEFT JOIN USERS u2 ON a.USER_ASIGNED = u2.ID "
-            f"WHERE {where_p} "
-            "ORDER BY USUARIO, a.RADICADO"
-        )
-        cur_p.execute(sql_p, tuple(params_p))
-        rows_p = cur_p.fetchall()
-        cur_p.close()
-
-        headers_p = ["RADICADO", "USUARIO"]
-        for j, h in enumerate(headers_p):
-            ctk.CTkLabel(frame3, text=h, font=("Arial", 12, "bold"))\
-                .grid(row=0, column=j, padx=5, pady=4, sticky="w")
-        for i, row in enumerate(rows_p, start=1):
-            for j, val in enumerate(row):
-                ctk.CTkLabel(frame3, text=str(val))\
-                    .grid(row=i, column=j, padx=5, pady=2, sticky="w")
 
 
 
@@ -3797,7 +3849,6 @@ def ver_progreso(root, conn):
     tabs.pack(padx=20, pady=(10,20), fill="both", expand=True)
     tabs.add("Por Estado")
     tabs.add("Por Usuario")
-    tabs.add("Pendientes")
     win._tabview = tabs
 
     # Carga inicial al abrir ventana
