@@ -3436,19 +3436,26 @@ def ver_progreso(root, conn):
         # Detectamos tipo de paquete y campos configurados
         sel_pkgs = [int(p) for p, v in paquete_vars.items() if v.get()]
         sel_tipos = [t for t, v in tipo_vars.items() if v.get()]
-        if len(sel_pkgs) != 1 or len(sel_tipos) != 1:
-            messagebox.showwarning(
-                "Exportar",
-                "Seleccione un único paquete y un único tipo de paquete para exportar."
-            )
-            return
-        num_pkg = sel_pkgs[0]
-        tipo = sel_tipos[0].upper()
+
         cur_f = conn.cursor()
-        cur_f.execute(
-            "SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE=%s AND tipo_paquete=%s",
-            (num_pkg, tipo)
-        )
+        if sel_pkgs or sel_tipos:
+            clauses = []
+            params_c = []
+            if sel_pkgs:
+                ph = ", ".join("%s" for _ in sel_pkgs)
+                clauses.append(f"NUM_PAQUETE IN ({ph})")
+                params_c.extend(sel_pkgs)
+            if sel_tipos:
+                ph = ", ".join("%s" for _ in sel_tipos)
+                clauses.append(f"tipo_paquete IN ({ph})")
+                params_c.extend(sel_tipos)
+            where_c = " AND ".join(clauses)
+            cur_f.execute(
+                f"SELECT DISTINCT campo FROM PAQUETE_CAMPOS WHERE {where_c}",
+                params_c,
+            )
+        else:
+            cur_f.execute("SELECT DISTINCT campo FROM PAQUETE_CAMPOS")
         campos_set = {r[0] for r in cur_f.fetchall()}
         cur_f.close()
 
