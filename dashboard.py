@@ -391,15 +391,19 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
     entry_factura_var  = tk.StringVar()
 
     
-    # 1) Obtener el último paquete cargado con TIPO_PAQUETE = 'DIGITACION'
+    # 1) Obtener el paquete pendiente más antiguo para tipificación
     cur = conn.cursor()
-    cur.execute("""
-        SELECT MAX(NUM_PAQUETE)
+    cur.execute(
+        """
+        SELECT MIN(NUM_PAQUETE)
         FROM ASIGNACION_TIPIFICACION
-        WHERE UPPER(LTRIM(RTRIM(TIPO_PAQUETE))) = %s AND TIPO_PAQUETE = 'DIGITACION'
-    """, ("DIGITACION",))
+        WHERE UPPER(LTRIM(RTRIM(TIPO_PAQUETE))) = %s
+          AND STATUS_ID = 1
+        """,
+        ("DIGITACION",),
+    )
     pkg = cur.fetchone()[0] or 0
-    tipo_paquete = 'DIGITACION';
+    tipo_paquete = "DIGITACION"
     cur.close()
 
     # 2) Variables de asignación
@@ -430,14 +434,17 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         nonlocal radicado, nit, factura
 
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT TOP 1 RADICADO, NIT, FACTURA
               FROM ASIGNACION_TIPIFICACION
              WHERE STATUS_ID    = 1
                AND NUM_PAQUETE  = %s
                AND TIPO_PAQUETE = 'DIGITACION'
-             ORDER BY NEWID()
-        """, (pkg,))
+             ORDER BY NIT ASC, RADICADO ASC
+            """,
+            (pkg,),
+        )
         row = cur.fetchone()
         cur.close()
         if not row:
@@ -447,8 +454,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         # marcamos como “en curso”
         cur2 = conn.cursor()
         cur2.execute(
-            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s",
-            (radicado,)
+            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2, user_asigned = %s WHERE RADICADO = %s",
+            (current_user_id, radicado),
         )
         conn.commit()
         cur2.close()
@@ -576,16 +583,16 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             fixed_row += 1
 
     def on_close():
-        # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
+        # Mantener la asignación en curso para el usuario actual
         if radicado is not None:
             cur = conn.cursor()
             cur.execute(
                 """
                 UPDATE ASIGNACION_TIPIFICACION
-                SET STATUS_ID = 1
+                SET STATUS_ID = 2, user_asigned = %s
                 WHERE RADICADO = %s
                 """,
-                (radicado,),
+                (current_user_id, radicado),
             )
             conn.commit()
             cur.close()
@@ -1852,15 +1859,19 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     entry_radicado_var = tk.StringVar()
     entry_nit_var      = tk.StringVar()
     entry_factura_var  = tk.StringVar()
-    # 1) Carga paquete y campos
+    # 1) Carga paquete más antiguo con asignaciones de calidad pendientes
     cur = conn.cursor()
-    cur.execute("""
-        SELECT MAX(NUM_PAQUETE)
+    cur.execute(
+        """
+        SELECT MIN(NUM_PAQUETE)
         FROM ASIGNACION_TIPIFICACION
-        WHERE UPPER(LTRIM(RTRIM(TIPO_PAQUETE))) = %s AND TIPO_PAQUETE = 'CALIDAD'
-    """, ("CALIDAD",))
+        WHERE UPPER(LTRIM(RTRIM(TIPO_PAQUETE))) = %s
+          AND STATUS_ID = 1
+        """,
+        ("CALIDAD",),
+    )
     pkg = cur.fetchone()[0] or 0
-    tipo_paquete = 'CALIDAD'
+    tipo_paquete = "CALIDAD"
     cur.close()
     
     cur2 = conn.cursor()
@@ -1890,22 +1901,25 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         nonlocal radicado, nit, factura
 
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT TOP 1 RADICADO, NIT, FACTURA
-            FROM ASIGNACION_TIPIFICACION
-            WHERE STATUS_ID = 1
-              AND NUM_PAQUETE = %s
-              AND TIPO_PAQUETE = 'CALIDAD'
-            ORDER BY NEWID()
-        """, (pkg,))
+              FROM ASIGNACION_TIPIFICACION
+             WHERE STATUS_ID = 1
+               AND NUM_PAQUETE = %s
+               AND TIPO_PAQUETE = 'CALIDAD'
+             ORDER BY NIT ASC, RADICADO ASC
+            """,
+            (pkg,),
+        )
         row = cur.fetchone()
         if not row:
             cur.close()
             return False
         radicado, nit, factura = row
         cur.execute(
-            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2 WHERE RADICADO = %s",
-            (radicado,)
+            "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID = 2, user_asigned = %s WHERE RADICADO = %s",
+            (current_user_id, radicado),
         )
         conn.commit()
         cur.close()
@@ -2031,16 +2045,16 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             fixed_row += 1
 
     def on_close():
-        # Si la ventana se cierra sin guardar, cambiamos el estado de la asignación a 1
+        # Mantener la asignación en curso para el usuario actual
         if radicado is not None:
             cur = conn.cursor()
             cur.execute(
                 """
                 UPDATE ASIGNACION_TIPIFICACION
-                SET STATUS_ID = 1
+                SET STATUS_ID = 2, user_asigned = %s
                 WHERE RADICADO = %s
                 """,
-                (radicado,),
+                (current_user_id, radicado),
             )
             conn.commit()
             cur.close()
