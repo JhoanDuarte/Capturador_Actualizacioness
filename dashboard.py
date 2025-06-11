@@ -3079,21 +3079,20 @@ def ver_progreso(root, conn):
 
     # — Construye WHERE y parámetros según filtros de UI —
     def construir_filtros():
-        try:
-            pkg = int(pkg_var.get())
-        except ValueError:
-            messagebox.showwarning(
-                "Selección inválida", "Selecciona un paquete válido."
-            )
-            return None, None, None, None
+        filtros = []
+        params = []
 
-        filtros = ["a.NUM_PAQUETE = %s"]
-        params = [pkg]
+        sel_pkgs = [int(p) for p, v in paquete_vars.items() if v.get()]
+        if sel_pkgs:
+            ph = ", ".join("%s" for _ in sel_pkgs)
+            filtros.append(f"a.NUM_PAQUETE IN ({ph})")
+            params.extend(sel_pkgs)
 
-        tipo = var_tipo_paquete.get().strip()
-        if tipo:
-            filtros.append("a.TIPO_PAQUETE = %s")
-            params.append(tipo)
+        sel_tipos = [t for t, v in tipo_vars.items() if v.get() and t]
+        if sel_tipos:
+            ph = ", ".join("%s" for _ in sel_tipos)
+            filtros.append(f"a.TIPO_PAQUETE IN ({ph})")
+            params.extend(sel_tipos)
 
         if var_fecha_desde.get().strip():
             d1 = fecha_desde.get_date()
@@ -3129,8 +3128,8 @@ def ver_progreso(root, conn):
                 filtros.append(f"a.RADICADO IN ({ph})")
                 params.extend(lista)
 
-        where_clause = " AND ".join(filtros)
-        return where_clause, tuple(params), pkg, tipo
+        where_clause = " AND ".join(filtros) if filtros else "1=1"
+        return where_clause, tuple(params)
     
 
     # — Filtrar/mostrar solo checks de estado coincidentes —
@@ -3178,7 +3177,7 @@ def ver_progreso(root, conn):
 
     def actualizar_tabs():
         # 0) Reconstruye filtros y params
-        where, params, pkg_sel, tipo_sel = construir_filtros()
+        where, params = construir_filtros()
         if where is None:
             return
 
@@ -3207,35 +3206,28 @@ def ver_progreso(root, conn):
 
         # --- Totales generales ---
         cur2 = conn.cursor()
-        sql_tot_asig = (
+        sql_tot_proc = (
             "SELECT COUNT(*) "
             "FROM ASIGNACION_TIPIFICACION a "
-            "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
-            "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
-            f"WHERE {where} AND a.STATUS_ID <> 1 AND s.ID <= 4"
+            f"WHERE {where} AND a.STATUS_ID IN (3,4)"
         )
-        cur2.execute(sql_tot_asig, params)
-        total_asignados = cur2.fetchone()[0] or 0
+        cur2.execute(sql_tot_proc, params)
+        total_procesado = cur2.fetchone()[0] or 0
         cur2.close()
 
         cur3 = conn.cursor()
         sql_tot_all = (
-            "SELECT COUNT(*) "
-            "FROM ASIGNACION_TIPIFICACION a "
-            "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
-            "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
-            f"WHERE {where} AND s.ID <= 4"
+            "SELECT COUNT(*) FROM ASIGNACION_TIPIFICACION a "
+            f"WHERE {where}"
         )
         cur3.execute(sql_tot_all, params)
         total_global = cur3.fetchone()[0] or 0
         cur3.close()
 
         fila_final = len(rows1)
-        ctk.CTkLabel(frame1, text="TOTAL ASIGNADOS", font=("Arial", 12, "bold")) \
+        ctk.CTkLabel(frame1, text="TOTAL PROCESADO", font=("Arial", 12, "bold")) \
             .grid(row=fila_final, column=0, sticky="w", padx=5, pady=4)
-        ctk.CTkLabel(frame1, text=str(total_asignados), font=("Arial", 12, "bold")) \
+        ctk.CTkLabel(frame1, text=str(total_procesado), font=("Arial", 12, "bold")) \
             .grid(row=fila_final, column=1, sticky="e", padx=5, pady=4)
 
         ctk.CTkLabel(frame1, text="TOTAL GENERAL", font=("Arial", 12, "bold")) \
@@ -3282,22 +3274,17 @@ def ver_progreso(root, conn):
         cur3 = conn.cursor()
         sql2 = (
             "SELECT "
-            "  COALESCE(u_t.ID, u_a.ID) AS ID, "
-            "  COALESCE(u_t.FIRST_NAME + ' ' + u_t.LAST_NAME, "
-            "           u_a.FIRST_NAME + ' ' + u_a.LAST_NAME, 'SIN USUARIO') AS USUARIO, "
+            "  CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END AS ID, "
+            "  u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO, "
             "  SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
             "  SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
             "  SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "LEFT JOIN USERS u_a ON a.USER_ASIGNED = u_a.ID "
-            "LEFT JOIN USERS u_t ON t.USER_ID = u_t.ID "
-            "LEFT JOIN USERS u   ON COALESCE(t.USER_ID, a.USER_ASIGNED) = u.ID "
-            "JOIN STATUS s ON a.STATUS_ID = s.ID "
-            f"WHERE {where} AND s.ID <= 4 "
-            "GROUP BY COALESCE(u_t.ID, u_a.ID), "
-            "         COALESCE(u_t.FIRST_NAME + ' ' + u_t.LAST_NAME, "
-            "                  u_a.FIRST_NAME + ' ' + u_a.LAST_NAME) "
+            "JOIN USERS u ON u.ID = CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END "
+            f"WHERE {where} AND a.STATUS_ID <= 4 "
+            "GROUP BY CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END, "
+            "         u.FIRST_NAME, u.LAST_NAME "
             "ORDER BY USUARIO"
         )
         cur3.execute(sql2, params)
@@ -3442,16 +3429,25 @@ def ver_progreso(root, conn):
 
             
     def exportar():
-        where, params, _, _ = construir_filtros()
+        where, params = construir_filtros()
         if where is None:
             return
 
         # Detectamos tipo de paquete y campos configurados
-        tipo = var_tipo_paquete.get().strip().upper()
+        sel_pkgs = [int(p) for p, v in paquete_vars.items() if v.get()]
+        sel_tipos = [t for t, v in tipo_vars.items() if v.get()]
+        if len(sel_pkgs) != 1 or len(sel_tipos) != 1:
+            messagebox.showwarning(
+                "Exportar",
+                "Seleccione un único paquete y un único tipo de paquete para exportar."
+            )
+            return
+        num_pkg = sel_pkgs[0]
+        tipo = sel_tipos[0].upper()
         cur_f = conn.cursor()
         cur_f.execute(
             "SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE=%s AND tipo_paquete=%s",
-            (int(pkg_var.get()), tipo)
+            (num_pkg, tipo)
         )
         campos_set = {r[0] for r in cur_f.fetchall()}
         cur_f.close()
@@ -3478,6 +3474,10 @@ def ver_progreso(root, conn):
             select_cols.append("t.NUM_DOC AS NumeroDocumento")
         if "COPAGO" in campos_set:
             select_cols.append("d.COPAGO AS CM_COPAGO")
+
+        # Siempre incluir identificadores de paquete justo despues de CM_COPAGO
+        select_cols.append("a.NUM_PAQUETE AS NUM_PAQUETE")
+        select_cols.append("a.TIPO_PAQUETE AS TIPO_PAQUETE")
         if "OBSERVACION" in campos_set:
             select_cols.append("d.OBSERVACION")
         select_cols.append("COALESCE(s.NAME, '') AS ESTADO")
@@ -3626,25 +3626,93 @@ def ver_progreso(root, conn):
     content = ctk.CTkFrame(win, fg_color="transparent")
     content.pack(side="left", fill="both", expand=True, padx=(0, 20), pady=20)
 
-    # Paquete
+    # Paquete (multi-selección)
     cur = conn.cursor()
     cur.execute("SELECT DISTINCT NUM_PAQUETE FROM ASIGNACION_TIPIFICACION ORDER BY NUM_PAQUETE")
-    paquetes = [str(r[0]) for r in cur.fetchall()] or ["0"]
+    paquetes = [str(r[0]) for r in cur.fetchall()]
     cur.close()
-    pkg_var = tk.StringVar(value=paquetes[0])
     ctk.CTkLabel(sidebar, text="Paquete:").grid(row=0, column=0, sticky="w")
-    ctk.CTkOptionMenu(sidebar, values=paquetes, variable=pkg_var, width=120).grid(row=0, column=1, padx=(0,10), sticky="w")
-    pkg_var.trace_add("write", lambda *a: actualizar_tabs())
+    buscar_pkg = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar paquete...")
+    buscar_pkg.grid(row=0, column=1, columnspan=2, sticky="w", padx=(0,10))
 
-    # Tipo de paquete
+    def _filtrar_pkg(event=None):
+        term = buscar_pkg.get().lower()
+        for p in paquetes:
+            cb = paquete_checks[p]
+            cb.pack_forget()
+            if term in p.lower():
+                cb.pack(anchor="w", pady=2)
+
+    def _marcar_pkg(val):
+        for var in paquete_vars.values():
+            var.set(val)
+        actualizar_tabs()
+
+    def _solo_visibles_pkg():
+        for p in paquetes:
+            cb = paquete_checks[p]
+            paquete_vars[p].set(cb.winfo_ismapped())
+        actualizar_tabs()
+
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_pkg(True), width=60).grid(row=1, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_pkg, width=80).grid(row=1, column=1)
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_pkg(False), width=60).grid(row=1, column=2, sticky="e")
+    pkg_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
+    pkg_frame.grid(row=2, column=0, columnspan=3, sticky="w")
+    paquete_vars = {}
+    paquete_checks = {}
+    for p in paquetes:
+        var = tk.BooleanVar(value=True)
+        cb = ctk.CTkCheckBox(pkg_frame, text=p, variable=var, command=actualizar_tabs)
+        cb.pack(anchor="w", pady=2)
+        paquete_vars[p] = var
+        paquete_checks[p] = cb
+
+    buscar_pkg.bind("<KeyRelease>", _filtrar_pkg)
+
+    # Tipo de paquete (multi-selección)
     cur = conn.cursor()
     cur.execute("SELECT DISTINCT TIPO_PAQUETE FROM ASIGNACION_TIPIFICACION ORDER BY TIPO_PAQUETE")
     tipos_paquete = [r[0] or "" for r in cur.fetchall()]
     cur.close()
-    var_tipo_paquete = tk.StringVar(value=tipos_paquete[0])
-    ctk.CTkLabel(sidebar, text="Tipo Paquete:").grid(row=1, column=0, sticky="w", pady=(10,0))
-    ctk.CTkOptionMenu(sidebar, values=tipos_paquete, variable=var_tipo_paquete, width=120).grid(row=1, column=1, padx=(0,10), sticky="w")
-    var_tipo_paquete.trace_add("write", lambda *a: actualizar_tabs())
+    ctk.CTkLabel(sidebar, text="Tipo Paquete:").grid(row=3, column=0, sticky="w", pady=(10,0))
+    buscar_tipo = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar tipo...")
+    buscar_tipo.grid(row=3, column=1, columnspan=2, sticky="w", padx=(0,10))
+
+    def _filtrar_tipo(event=None):
+        term = buscar_tipo.get().lower()
+        for t in tipos_paquete:
+            cb = tipo_checks[t]
+            cb.pack_forget()
+            if term in str(t).lower():
+                cb.pack(anchor="w", pady=2)
+
+    def _marcar_tipo(val):
+        for var in tipo_vars.values():
+            var.set(val)
+        actualizar_tabs()
+
+    def _solo_visibles_tipo():
+        for t in tipos_paquete:
+            cb = tipo_checks[t]
+            tipo_vars[t].set(cb.winfo_ismapped())
+        actualizar_tabs()
+
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_tipo(True), width=60).grid(row=4, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_tipo, width=80).grid(row=4, column=1)
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_tipo(False), width=60).grid(row=4, column=2, sticky="e")
+    tipo_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
+    tipo_frame.grid(row=5, column=0, columnspan=3, sticky="w")
+    tipo_vars = {}
+    tipo_checks = {}
+    for t in tipos_paquete:
+        var = tk.BooleanVar(value=True)
+        cb = ctk.CTkCheckBox(tipo_frame, text=str(t), variable=var, command=actualizar_tabs)
+        cb.pack(anchor="w", pady=2)
+        tipo_vars[t] = var
+        tipo_checks[t] = cb
+
+    buscar_tipo.bind("<KeyRelease>", _filtrar_tipo)
 
     # Fechas
     var_fecha_desde = tk.StringVar()
@@ -3659,40 +3727,40 @@ def ver_progreso(root, conn):
         fecha_desde.delete(0, "end")
         fecha_hasta.delete(0, "end")
     
-    ctk.CTkLabel(sidebar, text="Desde:").grid(row=2, column=0, sticky="w", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Desde:").grid(row=6, column=0, sticky="w", pady=(10,0))
     fecha_desde = DateEntry(sidebar, width=12, locale='es_CO',
                             date_pattern='dd/MM/yyyy',
                             textvariable=var_fecha_desde)
-    fecha_desde.grid(row=2, column=1, padx=(0,10), sticky="w")
+    fecha_desde.grid(row=6, column=1, padx=(0,10), sticky="w")
     fecha_desde.delete(0, 'end')
     # Actualiza solo cuando el usuario selecciona una fecha o termina de editar
     fecha_desde.bind("<<DateEntrySelected>>", lambda e: actualizar_tabs())
 
-    ctk.CTkLabel(sidebar, text="Hasta:").grid(row=3, column=0, sticky="w")
+    ctk.CTkLabel(sidebar, text="Hasta:").grid(row=7, column=0, sticky="w")
     fecha_hasta = DateEntry(sidebar, width=12, locale='es_CO',
                             date_pattern='dd/MM/yyyy',
                             textvariable=var_fecha_hasta)
-    fecha_hasta.grid(row=3, column=1, padx=(0,10), sticky="w")
+    fecha_hasta.grid(row=7, column=1, padx=(0,10), sticky="w")
     fecha_hasta.delete(0, 'end')
     # Igual que para la fecha inicial, actualiza al finalizar la selección
     fecha_hasta.bind("<<DateEntrySelected>>", lambda e: actualizar_tabs())
 
-    ctk.CTkButton(sidebar, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=4, column=0, columnspan=2, pady=(10,0))
-    ctk.CTkButton(sidebar, text="Exportar", command=exportar, width=100).grid(row=5, column=0, columnspan=2, pady=(10,0))
+    ctk.CTkButton(sidebar, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=8, column=0, columnspan=2, pady=(10,0))
+    ctk.CTkButton(sidebar, text="Exportar", command=exportar, width=100).grid(row=9, column=0, columnspan=2, pady=(10,0))
     # Filtro de estados
     cur = conn.cursor()
-    cur.execute("SELECT NAME FROM STATUS ORDER BY NAME")
+    cur.execute("SELECT NAME FROM STATUS WHERE ID BETWEEN 1 AND 4 ORDER BY NAME")
     estados = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Estado:").grid(row=6, column=0, sticky="w", pady=(10,5))
+    ctk.CTkLabel(sidebar, text="Estado:").grid(row=10, column=0, sticky="w", pady=(10,5))
     buscar_est = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar estado...")
-    buscar_est.grid(row=6, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
+    buscar_est.grid(row=10, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
     buscar_est.bind("<KeyRelease>", _filtrar_est)
-    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=7, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=80).grid(row=7, column=1)
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=2, sticky="e")
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=11, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=80).grid(row=11, column=1)
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=11, column=2, sticky="e")
     estado_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
-    estado_frame.grid(row=8, column=0, columnspan=3, sticky="w")
+    estado_frame.grid(row=12, column=0, columnspan=3, sticky="w")
     estado_vars = {}
     estado_checks = {}
     for est in estados:
@@ -3717,16 +3785,16 @@ def ver_progreso(root, conn):
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=9, column=0, sticky="w", pady=(10,5))
+    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=13, column=0, sticky="w", pady=(10,5))
     buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
-    buscar_usr.grid(row=9, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
+    buscar_usr.grid(row=13, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=10, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=80).grid(row=10, column=1)
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=10, column=2, sticky="e")
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=14, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=80).grid(row=14, column=1)
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=14, column=2, sticky="e")
 
     user_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
-    user_frame.grid(row=11, column=0, columnspan=3, sticky="w")
+    user_frame.grid(row=15, column=0, columnspan=3, sticky="w")
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -3737,9 +3805,9 @@ def ver_progreso(root, conn):
         user_checks[usr] = cb
         
 
-    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=12, column=0, sticky="nw", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=16, column=0, sticky="nw", pady=(10,0))
     rad_text = ctk.CTkTextbox(sidebar, width=240, height=100)
-    rad_text.grid(row=12, column=1, columnspan=2, sticky="w", pady=(10,0))
+    rad_text.grid(row=16, column=1, columnspan=2, sticky="w", pady=(10,0))
 
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
@@ -4099,6 +4167,11 @@ def exportar_paquete(root, conn):
             select_cols.append("t.NUM_DOC AS NumeroDocumento")
         if "COPAGO" in campos_set:
             select_cols.append("d.COPAGO AS CM_COPAGO")
+
+        # Colocar identificadores de paquete a continuación de CM_COPAGO
+        select_cols.append("a.NUM_PAQUETE AS NUM_PAQUETE")
+        select_cols.append("a.TIPO_PAQUETE AS TIPO_PAQUETE")
+
         if "OBSERVACION" in campos_set:
             select_cols.append("d.OBSERVACION")
         select_cols.append("t.fecha_creacion AS FechaDigitacion")
