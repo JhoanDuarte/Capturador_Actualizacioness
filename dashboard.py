@@ -3289,6 +3289,7 @@ def ver_progreso(root, conn):
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
             "JOIN USERS u ON u.ID = CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END "
+            "JOIN STATUS s ON a.STATUS_ID = s.ID "
             f"WHERE {where} AND a.STATUS_ID <= 4 "
             "GROUP BY CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END, "
             "         u.FIRST_NAME, u.LAST_NAME "
@@ -4609,7 +4610,121 @@ if "--crear-usuario" in sys.argv:
         sys.exit("No se pudo conectar a la BD.")
     AppTk(conn).run()   # ahora existe .run()
     sys.exit(0)
-    
+
+
+def liberar_radicados(root, conn):
+    """Permite liberar o reasignar radicados en estado 2."""
+    win = ctk.CTkToplevel(root)
+    win.title("Liberar Radicados")
+    win.geometry("700x500")
+    win.grab_set()
+    win.protocol("WM_DELETE_WINDOW", lambda w=win: safe_destroy(w))
+
+    # Obtener radicados asignados
+    cur = conn.cursor()
+    cur.execute(
+        """
+            SELECT a.RADICADO, u.ID, u.FIRST_NAME + ' ' + u.LAST_NAME
+              FROM ASIGNACION_TIPIFICACION a
+              JOIN USERS u ON a.USER_ASIGNED = u.ID
+             WHERE a.STATUS_ID = 2
+             ORDER BY a.RADICADO
+        """
+    )
+    rows = cur.fetchall()
+    cur.close()
+
+    # Usuarios para reasignar
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT ID, NUM_DOC, FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME"
+    )
+    urows = cur.fetchall()
+    cur.close()
+    user_opts = [f"{num} - {name}" for (uid, num, name) in urows]
+    user_map = {f"{num} - {name}": uid for (uid, num, name) in urows}
+
+    frame = ctk.CTkScrollableFrame(win, width=660, height=340)
+    frame.pack(padx=10, pady=10, fill="both", expand=True)
+
+    headers = ["RADICADO", "ASIGNADO", "NUEVO USUARIO", "", ""]
+    for j, h in enumerate(headers):
+        ctk.CTkLabel(frame, text=h, font=("Arial", 10, "bold"))\
+            .grid(row=0, column=j, padx=4, pady=2)
+
+    def crear_fila(i, radicado, asignado):
+        ctk.CTkLabel(frame, text=str(radicado)).grid(row=i, column=0, padx=4, pady=2)
+        ctk.CTkLabel(frame, text=asignado).grid(row=i, column=1, padx=4, pady=2)
+        var = tk.StringVar()
+        entry = AutocompleteEntry(frame, user_opts, textvariable=var, width=180)
+        entry.grid(row=i, column=2, padx=4, pady=2)
+
+        def do_liberar():
+            cur_l = conn.cursor()
+            cur_l.execute(
+                "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID=1, USER_ASIGNED=NULL WHERE RADICADO=%s",
+                (radicado,)
+            )
+            conn.commit()
+            cur_l.close()
+            entry.configure(state="disabled")
+            btn_lib.configure(state="disabled")
+            btn_asig.configure(state="disabled")
+
+        def do_asignar():
+            sel = var.get().strip()
+            uid = user_map.get(sel)
+            if uid is None:
+                messagebox.showwarning("Error", "Selecciona usuario válido")
+                return
+            cur_l = conn.cursor()
+            cur_l.execute(
+                "UPDATE ASIGNACION_TIPIFICACION SET USER_ASIGNED=%s WHERE RADICADO=%s",
+                (uid, radicado),
+            )
+            conn.commit()
+            cur_l.close()
+            entry.configure(state="disabled")
+            btn_lib.configure(state="disabled")
+            btn_asig.configure(state="disabled")
+
+        btn_lib = ctk.CTkButton(frame, text="Liberar", width=80, command=do_liberar)
+        btn_lib.grid(row=i, column=3, padx=4, pady=2)
+        btn_asig = ctk.CTkButton(frame, text="Asignar", width=80, command=do_asignar)
+        btn_asig.grid(row=i, column=4, padx=4, pady=2)
+
+    for idx, (rad, uid, uname) in enumerate(rows, start=1):
+        crear_fila(idx, rad, uname)
+
+    # ---- Acciones globales ----
+    bottom = ctk.CTkFrame(win, fg_color="transparent")
+    bottom.pack(pady=10)
+    ctk.CTkLabel(bottom, text="Asignar a:").grid(row=0, column=0, padx=4)
+    all_var = tk.StringVar()
+    entry_all = AutocompleteEntry(bottom, ["" ] + user_opts, textvariable=all_var, width=200)
+    entry_all.grid(row=0, column=1, padx=4)
+
+    def liberar_todos():
+        sel = all_var.get().strip()
+        uid = user_map.get(sel)
+        cur_l = conn.cursor()
+        if uid:
+            cur_l.execute(
+                "UPDATE ASIGNACION_TIPIFICACION SET USER_ASIGNED=%s WHERE STATUS_ID=2",
+                (uid,),
+            )
+        else:
+            cur_l.execute(
+                "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID=1, USER_ASIGNED=NULL WHERE STATUS_ID=2"
+            )
+        conn.commit()
+        cur_l.close()
+        messagebox.showinfo("Listo", "Radicados actualizados")
+        safe_destroy(win)
+
+    ctk.CTkButton(bottom, text="Liberar Todos", command=liberar_todos, width=120)\
+        .grid(row=0, column=2, padx=6)
+
     
 if "--iniciar-tipificacion" in sys.argv:
         # Configura tema según la preferencia guardada
@@ -4780,6 +4895,20 @@ if "--desactivar-usuario" in sys.argv:
         modificar_estado_usuario(root, conn)
 
         # 5) arranca el loop de Tk para CustomTkinter
+        root.mainloop()
+        sys.exit(0)
+
+if "--liberar-radicados" in sys.argv:
+        apply_ctk_theme_from_settings()
+        root = tk.Tk()
+        root.withdraw()
+
+        conn = conectar_sql_server("DB_DATABASE")
+        if conn is None:
+            sys.exit("No se pudo conectar a la BD.")
+
+        liberar_radicados(root, conn)
+
         root.mainloop()
         sys.exit(0)
 
@@ -5452,6 +5581,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 ("Actualizar Datos",                        self.on_actualizar_datos),
                 ("Modificar Datos Capturados",              self.on_modificar_radicado),
                 ("Ver Progreso",                            self.on_ver_progreso),
+                ("Liberar Radicados",                      self.on_liberar_radicados),
                 ("Desactivar Usuario",                      self.on_modificar_estado_usuario),
                 ("Exportar Datos",                          self.on_exportar_paquete),
             ],
@@ -5772,6 +5902,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
             script,
             "--ver-progreso",
             str(self)          # <–– Aquí debe ir el user_id
+        ])
+        pass
+
+    def on_liberar_radicados(self):
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--liberar-radicados",
+            str(self.user_id)
         ])
         pass
 
