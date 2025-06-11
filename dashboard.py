@@ -3281,16 +3281,19 @@ def ver_progreso(root, conn):
         # 1) Conteos por usuario
         cur3 = conn.cursor()
         sql2 = (
-            "SELECT u.ID, "
-            "       u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO, "
-            "       SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
-            "       SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
-            "       SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
+            "SELECT "
+            "  COALESCE(u.ID, CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END) AS ID, "
+            "  COALESCE(u.FIRST_NAME + ' ' + u.LAST_NAME, 'SIN USUARIO') AS USUARIO, "
+            "  SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
+            "  SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
+            "  SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "JOIN USERS u ON u.ID = CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END "
+            "LEFT JOIN USERS u ON u.ID = CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END "
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
-            f"WHERE {where} AND s.ID <= 4 GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME ORDER BY USUARIO"
+            f"WHERE {where} AND s.ID <= 4 "
+            "GROUP BY COALESCE(u.ID, CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END), u.FIRST_NAME, u.LAST_NAME "
+            "ORDER BY USUARIO"
         )
         cur3.execute(sql2, params)
         rows2 = cur3.fetchall()
