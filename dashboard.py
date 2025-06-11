@@ -3802,7 +3802,7 @@ def actualizar_tabs(win, conn, num_paquete,where, params):
                SUM(CASE WHEN at.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS
           FROM ASIGNACION_TIPIFICACION at
           LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = at.RADICADO
-          JOIN USERS u     ON u.ID = CASE WHEN at.STATUS_ID=2 THEN at.USER_ASIGNED ELSE t.USER_ID END
+          JOIN USERS u ON u.ID = CASE WHEN at.STATUS_ID=2 THEN at.USER_ASIGNED ELSE t.USER_ID END
          WHERE at.NUM_PAQUETE = %s AND at.STATUS_ID <= 4
          GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME
          ORDER BY USUARIO
