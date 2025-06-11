@@ -3192,8 +3192,8 @@ def ver_progreso(root, conn):
             "SELECT UPPER(s.NAME) AS ESTADO, COUNT(*) AS CNT "
             "FROM ASIGNACION_TIPIFICACION a "
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
-            "JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "JOIN USERS u ON t.USER_ID = u.ID "
+            "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
+            "LEFT JOIN USERS u ON a.USER_ASIGNED = u.ID "
             f"WHERE {where} GROUP BY s.NAME ORDER BY s.NAME"
         )
         cur.execute(sql1, params)
@@ -3211,7 +3211,7 @@ def ver_progreso(root, conn):
             "SELECT COUNT(*) "
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "LEFT JOIN USERS u        ON t.USER_ID        = u.ID "
+            "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
             "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
             f"WHERE {where} AND a.STATUS_ID <> 1"
         )
@@ -3224,7 +3224,7 @@ def ver_progreso(root, conn):
             "SELECT COUNT(*) "
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "LEFT JOIN USERS u        ON t.USER_ID        = u.ID "
+            "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
             "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
             f"WHERE {where}"
         )
@@ -3287,8 +3287,8 @@ def ver_progreso(root, conn):
             "       SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
             "       SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
             "FROM ASIGNACION_TIPIFICACION a "
-            "JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "JOIN USERS u ON t.USER_ID = u.ID "
+            "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
+            "JOIN USERS u ON a.USER_ASIGNED = u.ID "
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
             f"WHERE {where} GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME ORDER BY USUARIO"
         )
@@ -3659,7 +3659,6 @@ def ver_progreso(root, conn):
     fecha_desde.delete(0, 'end')
     # Actualiza solo cuando el usuario selecciona una fecha o termina de editar
     fecha_desde.bind("<<DateEntrySelected>>", lambda e: actualizar_tabs())
-    fecha_desde.bind("<FocusOut>", lambda e: actualizar_tabs())
 
     ctk.CTkLabel(sidebar, text="Hasta:").grid(row=3, column=0, sticky="w")
     fecha_hasta = DateEntry(sidebar, width=12, locale='es_CO',
@@ -3669,7 +3668,6 @@ def ver_progreso(root, conn):
     fecha_hasta.delete(0, 'end')
     # Igual que para la fecha inicial, actualiza al finalizar la selección
     fecha_hasta.bind("<<DateEntrySelected>>", lambda e: actualizar_tabs())
-    fecha_hasta.bind("<FocusOut>", lambda e: actualizar_tabs())
 
     ctk.CTkButton(sidebar, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=4, column=0, columnspan=2, pady=(10,0))
     ctk.CTkButton(sidebar, text="Exportar", command=exportar, width=100).grid(row=5, column=0, columnspan=2, pady=(10,0))
@@ -3802,10 +3800,9 @@ def actualizar_tabs(win, conn, num_paquete,where, params):
                SUM(CASE WHEN at.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES,
                SUM(CASE WHEN at.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS,
                SUM(CASE WHEN at.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS
-          FROM TIPIFICACION t
-          JOIN USERS u     ON t.USER_ID = u.ID
-          JOIN ASIGNACION_TIPIFICACION at
-            ON at.RADICADO = t.ASIGNACION_ID
+          FROM ASIGNACION_TIPIFICACION at
+          LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = at.RADICADO
+          JOIN USERS u     ON at.USER_ASIGNED = u.ID
          WHERE at.NUM_PAQUETE = %s
          GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME
          ORDER BY USUARIO
