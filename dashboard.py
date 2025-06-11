@@ -3652,16 +3652,24 @@ def ver_progreso(root, conn):
         fecha_hasta.delete(0, "end")
     
     ctk.CTkLabel(sidebar, text="Desde:").grid(row=2, column=0, sticky="w", pady=(10,0))
-    fecha_desde = DateEntry(sidebar, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_desde)
+    fecha_desde = DateEntry(sidebar, width=12, locale='es_CO',
+                            date_pattern='dd/MM/yyyy',
+                            textvariable=var_fecha_desde)
     fecha_desde.grid(row=2, column=1, padx=(0,10), sticky="w")
     fecha_desde.delete(0, 'end')
-    var_fecha_desde.trace_add("write", lambda *a: actualizar_tabs())
+    # Actualiza solo cuando el usuario selecciona una fecha o termina de editar
+    fecha_desde.bind("<<DateEntrySelected>>", lambda e: actualizar_tabs())
+    fecha_desde.bind("<FocusOut>", lambda e: actualizar_tabs())
 
     ctk.CTkLabel(sidebar, text="Hasta:").grid(row=3, column=0, sticky="w")
-    fecha_hasta = DateEntry(sidebar, width=12, locale='es_CO', date_pattern='dd/MM/yyyy', textvariable=var_fecha_hasta)
+    fecha_hasta = DateEntry(sidebar, width=12, locale='es_CO',
+                            date_pattern='dd/MM/yyyy',
+                            textvariable=var_fecha_hasta)
     fecha_hasta.grid(row=3, column=1, padx=(0,10), sticky="w")
     fecha_hasta.delete(0, 'end')
-    var_fecha_hasta.trace_add("write", lambda *a: actualizar_tabs())
+    # Igual que para la fecha inicial, actualiza al finalizar la selección
+    fecha_hasta.bind("<<DateEntrySelected>>", lambda e: actualizar_tabs())
+    fecha_hasta.bind("<FocusOut>", lambda e: actualizar_tabs())
 
     ctk.CTkButton(sidebar, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=4, column=0, columnspan=2, pady=(10,0))
     ctk.CTkButton(sidebar, text="Exportar", command=exportar, width=100).grid(row=5, column=0, columnspan=2, pady=(10,0))
