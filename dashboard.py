@@ -4477,35 +4477,37 @@ if "--crear-usuario" in sys.argv:
                 if i == 0:
                     w.focus()
 
-                ctk.CTkLabel(frm1, text="Roles:").grid(row=len(labels_ind), column=0, sticky="nw", pady=(10, 0))
-                chk_frame1 = ctk.CTkFrame(frm1)
-                chk_frame1.grid(row=len(labels_ind), column=1, sticky="w", pady=(10, 0))
-                for j, (rid, rname) in enumerate(roles):
-                    ctk.CTkCheckBox(chk_frame1, text=rname, variable=rol_vars[rid]).grid(row=j, column=0, sticky="w", pady=2)
+            # ---- Roles para tab Individual ----
+            ctk.CTkLabel(frm1, text="Roles:").grid(row=len(labels_ind), column=0, sticky="nw", pady=(10, 0))
+            chk_frame1 = ctk.CTkFrame(frm1)
+            chk_frame1.grid(row=len(labels_ind), column=1, sticky="w", pady=(10, 0))
+            for j, (rid, rname) in enumerate(roles):
+                ctk.CTkCheckBox(chk_frame1, text=rname, variable=rol_vars[rid]).grid(row=j, column=0, sticky="w", pady=2)
 
-                frm2 = ctk.CTkFrame(tab_bulk, corner_radius=8)
-                frm2.pack(padx=20, pady=20, fill="both", expand=True)
+            # ---- Tab Masivo ----
+            frm2 = ctk.CTkFrame(tab_bulk, corner_radius=8)
+            frm2.pack(padx=20, pady=20, fill="both", expand=True)
 
-                labels_bulk = [
-                    ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
-                    ("Contraseña:", pwd_var, "entry_pass", None),
-                    ("Status:", stat_var, "combo", [n for _, n in statuses]),
-                ]
-                for i, (text, var, kind, cmd) in enumerate(labels_bulk):
-                    ctk.CTkLabel(frm2, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
-                    if kind == "entry_pass":
-                        w = ctk.CTkEntry(frm2, textvariable=var, show="*", width=300)
-                    elif kind == "combo":
-                        w = ctk.CTkComboBox(frm2, values=cmd, variable=var, width=300)
-                    else:
-                        w = ctk.CTkEntry(frm2, textvariable=var, width=300)
-                    w.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
+            labels_bulk = [
+                ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
+                ("Contraseña:", pwd_var, "entry_pass", None),
+                ("Status:", stat_var, "combo", [n for _, n in statuses]),
+            ]
+            for i, (text, var, kind, cmd) in enumerate(labels_bulk):
+                ctk.CTkLabel(frm2, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
+                if kind == "entry_pass":
+                    w = ctk.CTkEntry(frm2, textvariable=var, show="*", width=300)
+                elif kind == "combo":
+                    w = ctk.CTkComboBox(frm2, values=cmd, variable=var, width=300)
+                else:
+                    w = ctk.CTkEntry(frm2, textvariable=var, width=300)
+                w.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
 
-                ctk.CTkLabel(frm2, text="Roles:").grid(row=len(labels_bulk), column=0, sticky="nw", pady=(10, 0))
-                chk_frame2 = ctk.CTkFrame(frm2)
-                chk_frame2.grid(row=len(labels_bulk), column=1, sticky="w", pady=(10, 0))
-                for j, (rid, rname) in enumerate(roles):
-                    ctk.CTkCheckBox(chk_frame2, text=rname, variable=rol_vars[rid]).grid(row=j, column=0, sticky="w", pady=2)
+            ctk.CTkLabel(frm2, text="Roles:").grid(row=len(labels_bulk), column=0, sticky="nw", pady=(10, 0))
+            chk_frame2 = ctk.CTkFrame(frm2)
+            chk_frame2.grid(row=len(labels_bulk), column=1, sticky="w", pady=(10, 0))
+            for j, (rid, rname) in enumerate(roles):
+                ctk.CTkCheckBox(chk_frame2, text=rname, variable=rol_vars[rid]).grid(row=j, column=0, sticky="w", pady=2)
 
                 def _insertar_usuario(first, last, num_doc, email_addr=""):
                     type_id = tipo_map[tipo_var.get()]
