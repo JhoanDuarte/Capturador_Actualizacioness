@@ -3474,6 +3474,10 @@ def ver_progreso(root, conn):
             select_cols.append("t.NUM_DOC AS NumeroDocumento")
         if "COPAGO" in campos_set:
             select_cols.append("d.COPAGO AS CM_COPAGO")
+
+        # Siempre incluir identificadores de paquete justo despues de CM_COPAGO
+        select_cols.append("a.NUM_PAQUETE AS NUM_PAQUETE")
+        select_cols.append("a.TIPO_PAQUETE AS TIPO_PAQUETE")
         if "OBSERVACION" in campos_set:
             select_cols.append("d.OBSERVACION")
         select_cols.append("COALESCE(s.NAME, '') AS ESTADO")
@@ -4163,6 +4167,11 @@ def exportar_paquete(root, conn):
             select_cols.append("t.NUM_DOC AS NumeroDocumento")
         if "COPAGO" in campos_set:
             select_cols.append("d.COPAGO AS CM_COPAGO")
+
+        # Colocar identificadores de paquete a continuación de CM_COPAGO
+        select_cols.append("a.NUM_PAQUETE AS NUM_PAQUETE")
+        select_cols.append("a.TIPO_PAQUETE AS TIPO_PAQUETE")
+
         if "OBSERVACION" in campos_set:
             select_cols.append("d.OBSERVACION")
         select_cols.append("t.fecha_creacion AS FechaDigitacion")
