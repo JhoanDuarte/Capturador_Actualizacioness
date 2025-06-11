@@ -4400,82 +4400,82 @@ if "--crear-usuario" in sys.argv:
                 self._tk_root = tk.Tk()
                 self._tk_root.withdraw()
 
-                # Validaciones
-                def only_letters_and_spaces(P):
-                    # P es el texto completo tras el cambio
-                    return all(c.isalpha() or c == ' ' for c in P)
+            # Validaciones
+            def only_letters_and_spaces(P):
+                # P es el texto completo tras el cambio
+                return all(c.isalpha() or c == ' ' for c in P)
 
-                def only_digits(P):
-                    return P == "" or P.isdigit()
+            def only_digits(P):
+                return P == "" or P.isdigit()
 
-                def validate_email(email):
-                    regex = r'^[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z0-9\-.]+$'
-                    return re.match(regex, email) is not None
+            def validate_email(email):
+                regex = r'^[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z0-9\-.]+$'
+                return re.match(regex, email) is not None
 
-                # Registros y validadores
-                vcmd_letters = (self._tk_root.register(only_letters_and_spaces), '%P')
-                vcmd_digits = (self._tk_root.register(only_digits), '%P')
+            # Registros y validadores
+            vcmd_letters = (self._tk_root.register(only_letters_and_spaces), '%P')
+            vcmd_digits = (self._tk_root.register(only_digits), '%P')
 
-                top = ctk.CTkToplevel(self._tk_root)
-                top.title("Crear Usuario")
-                top.geometry("520x650")
-                top.resizable(False, False)
+            top = ctk.CTkToplevel(self._tk_root)
+            top.title("Crear Usuario")
+            top.geometry("520x650")
+            top.resizable(False, False)
 
-                cur = self.conn.cursor()
-                cur.execute("SELECT ID, NAME FROM TIPO_DOC")
-                tipos = cur.fetchall()
-                cur.execute("SELECT ID, NAME FROM STATUS WHERE ID IN (%s, %s)", (5, 6))
-                statuses = cur.fetchall()
-                cur.execute("SELECT ID, NAME FROM ROL")
-                roles = cur.fetchall()
-                cur.close()
+            cur = self.conn.cursor()
+            cur.execute("SELECT ID, NAME FROM TIPO_DOC")
+            tipos = cur.fetchall()
+            cur.execute("SELECT ID, NAME FROM STATUS WHERE ID IN (%s, %s)", (5, 6))
+            statuses = cur.fetchall()
+            cur.execute("SELECT ID, NAME FROM ROL")
+            roles = cur.fetchall()
+            cur.close()
 
-                tipo_map = {name: tid for tid, name in tipos}
-                status_map = {name: sid for sid, name in statuses}
+            tipo_map = {name: tid for tid, name in tipos}
+            status_map = {name: sid for sid, name in statuses}
 
-                tipo_var = tk.StringVar(value=tipos[0][1] if tipos else "")
-                pwd_var = tk.StringVar()
-                stat_var = tk.StringVar(value=statuses[0][1] if statuses else "")
-                rol_vars = {rid: tk.BooleanVar() for rid, _ in roles}
+            tipo_var = tk.StringVar(value=tipos[0][1] if tipos else "")
+            pwd_var = tk.StringVar()
+            stat_var = tk.StringVar(value=statuses[0][1] if statuses else "")
+            rol_vars = {rid: tk.BooleanVar() for rid, _ in roles}
 
-                tabs = ctk.CTkTabview(top, width=480, height=580)
-                tabs.pack(padx=10, pady=10, fill="both", expand=True)
-                tab_ind = tabs.add("Individual")
-                tab_bulk = tabs.add("Masivo")
+            tabs = ctk.CTkTabview(top, width=480, height=580)
+            tabs.pack(padx=10, pady=10, fill="both", expand=True)
+            tab_ind = tabs.add("Individual")
+            tab_bulk = tabs.add("Masivo")
 
-                fn_var = tk.StringVar()
-                ln_var = tk.StringVar()
-                doc_var = tk.StringVar()
-                email_var = tk.StringVar()
+            fn_var = tk.StringVar()
+            ln_var = tk.StringVar()
+            doc_var = tk.StringVar()
+            email_var = tk.StringVar()
 
-                frm1 = ctk.CTkFrame(tab_ind, corner_radius=8)
-                frm1.pack(padx=20, pady=20, fill="both", expand=True)
+            frm1 = ctk.CTkFrame(tab_ind, corner_radius=8)
+            frm1.pack(padx=20, pady=20, fill="both", expand=True)
 
-                labels_ind = [
-                    ("Nombres:", fn_var, "entry_upper", vcmd_letters),
-                    ("Apellidos:", ln_var, "entry_upper", vcmd_letters),
-                    ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
-                    ("N° Documento:", doc_var, "entry_digit", vcmd_digits),
-                    ("Correo:", email_var, "entry_email", None),
-                    ("Contraseña:", pwd_var, "entry_pass", None),
-                    ("Status:", stat_var, "combo", [n for _, n in statuses]),
-                ]
-                for i, (text, var, kind, cmd) in enumerate(labels_ind):
-                    ctk.CTkLabel(frm1, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
-                    if kind == "entry_upper":
-                        w = ctk.CTkEntry(frm1, textvariable=var, width=300, validate="key", validatecommand=vcmd_letters)
-                        w.bind("<KeyRelease>", lambda e, v=var: v.set(v.get().upper()))
-                    elif kind == "entry_digit":
-                        w = ctk.CTkEntry(frm1, textvariable=var, width=300, validate="key", validatecommand=cmd)
-                    elif kind == "entry_pass":
-                        w = ctk.CTkEntry(frm1, textvariable=var, show="*", width=300)
-                    elif kind == "entry_email":
-                        w = ctk.CTkEntry(frm1, textvariable=var, width=300)
-                    else:
-                        w = ctk.CTkComboBox(frm1, values=cmd, variable=var, width=300)
-                    w.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
-                    if i == 0:
-                        w.focus()
+            labels_ind = [
+                ("Nombres:", fn_var, "entry_upper", vcmd_letters),
+                ("Apellidos:", ln_var, "entry_upper", vcmd_letters),
+                ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
+                ("N° Documento:", doc_var, "entry_digit", vcmd_digits),
+                ("Correo:", email_var, "entry_email", None),
+                ("Contraseña:", pwd_var, "entry_pass", None),
+                ("Status:", stat_var, "combo", [n for _, n in statuses]),
+            ]
+            for i, (text, var, kind, cmd) in enumerate(labels_ind):
+                ctk.CTkLabel(frm1, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
+                if kind == "entry_upper":
+                    w = ctk.CTkEntry(frm1, textvariable=var, width=300, validate="key", validatecommand=vcmd_letters)
+                    w.bind("<KeyRelease>", lambda e, v=var: v.set(v.get().upper()))
+                elif kind == "entry_digit":
+                    w = ctk.CTkEntry(frm1, textvariable=var, width=300, validate="key", validatecommand=cmd)
+                elif kind == "entry_pass":
+                    w = ctk.CTkEntry(frm1, textvariable=var, show="*", width=300)
+                elif kind == "entry_email":
+                    w = ctk.CTkEntry(frm1, textvariable=var, width=300)
+                else:
+                    w = ctk.CTkComboBox(frm1, values=cmd, variable=var, width=300)
+                w.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
+                if i == 0:
+                    w.focus()
 
                 ctk.CTkLabel(frm1, text="Roles:").grid(row=len(labels_ind), column=0, sticky="nw", pady=(10, 0))
                 chk_frame1 = ctk.CTkFrame(frm1)
