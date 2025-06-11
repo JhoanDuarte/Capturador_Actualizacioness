@@ -4387,18 +4387,18 @@ if "--crear-usuario" in sys.argv:
     from tkinter import messagebox
     import customtkinter as ctk
     import re, bcrypt
-    # aquí pones tu clase o función crear_usuario idéntica
+
     class AppTk:
         def __init__(self, conn):
             apply_ctk_theme_from_settings()
             self.conn = conn
             self._tk_root = tk.Tk()
             self._tk_root.withdraw()
+
         def crear_usuario(self):
-        # —–– Asegurarse de tener un root de Tkinter para el register() —––
-                if not hasattr(self, '_tk_root'):
-                    self._tk_root = tk.Tk()
-                    self._tk_root.withdraw()
+            if not hasattr(self, '_tk_root'):
+                self._tk_root = tk.Tk()
+                self._tk_root.withdraw()
 
                 # Validaciones
                 def only_letters_and_spaces(P):
@@ -4412,17 +4412,15 @@ if "--crear-usuario" in sys.argv:
                     regex = r'^[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z0-9\-.]+$'
                     return re.match(regex, email) is not None
 
-                # Aquí usamos el register() del Tk oculto
+                # Registros y validadores
                 vcmd_letters = (self._tk_root.register(only_letters_and_spaces), '%P')
-                vcmd_digits  = (self._tk_root.register(only_digits), '%P')
+                vcmd_digits = (self._tk_root.register(only_digits), '%P')
 
-                # Crear ventana secundaria
                 top = ctk.CTkToplevel(self._tk_root)
                 top.title("Crear Usuario")
-                top.geometry("500x600")
+                top.geometry("520x650")
                 top.resizable(False, False)
 
-                # Recuperar catálogos
                 cur = self.conn.cursor()
                 cur.execute("SELECT ID, NAME FROM TIPO_DOC")
                 tipos = cur.fetchall()
@@ -4432,182 +4430,138 @@ if "--crear-usuario" in sys.argv:
                 roles = cur.fetchall()
                 cur.close()
 
-                tipo_map   = {name: tid for tid, name in tipos}
+                tipo_map = {name: tid for tid, name in tipos}
                 status_map = {name: sid for sid, name in statuses}
 
-                # Variables
-                fn_var   = tk.StringVar()
-                ln_var   = tk.StringVar()
-                doc_var  = tk.StringVar()
-                pwd_var  = tk.StringVar()
-                email_var = tk.StringVar()  # Variable para el correo
                 tipo_var = tk.StringVar(value=tipos[0][1] if tipos else "")
+                pwd_var = tk.StringVar()
                 stat_var = tk.StringVar(value=statuses[0][1] if statuses else "")
+                rol_vars = {rid: tk.BooleanVar() for rid, _ in roles}
 
-                # Frame
-                top.grid_rowconfigure(0, weight=1)
-                top.grid_columnconfigure(0, weight=1)
-                frm = ctk.CTkFrame(top, corner_radius=8)
-                frm.grid(row=0, column=0, padx=20, pady=20)
+                tabs = ctk.CTkTabview(top, width=480, height=580)
+                tabs.pack(padx=10, pady=10, fill="both", expand=True)
+                tab_ind = tabs.add("Individual")
+                tab_bulk = tabs.add("Masivo")
 
-                # Definición de campos
-                labels = [
+                fn_var = tk.StringVar()
+                ln_var = tk.StringVar()
+                doc_var = tk.StringVar()
+                email_var = tk.StringVar()
+
+                frm1 = ctk.CTkFrame(tab_ind, corner_radius=8)
+                frm1.pack(padx=20, pady=20, fill="both", expand=True)
+
+                labels_ind = [
                     ("Nombres:", fn_var, "entry_upper", vcmd_letters),
                     ("Apellidos:", ln_var, "entry_upper", vcmd_letters),
                     ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
                     ("N° Documento:", doc_var, "entry_digit", vcmd_digits),
-                    ("Correo:", email_var, "entry_email", None),  # Nuevo campo correo
+                    ("Correo:", email_var, "entry_email", None),
                     ("Contraseña:", pwd_var, "entry_pass", None),
-                    ("Status:", stat_var, "combo", [n for _, n in statuses])
+                    ("Status:", stat_var, "combo", [n for _, n in statuses]),
                 ]
-
-                for i, (text, var, kind, cmd) in enumerate(labels):
-                    ctk.CTkLabel(frm, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
+                for i, (text, var, kind, cmd) in enumerate(labels_ind):
+                    ctk.CTkLabel(frm1, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
                     if kind == "entry_upper":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            width=300,
-                            validate="key",
-                            validatecommand=vcmd_letters   # <-- usa el validador actualizado
-                        )
-                        # Forzar mayúsculas tras cada tecla
-                        widget.bind("<KeyRelease>", lambda e, v=var: v.set(v.get().upper()))
-
+                        w = ctk.CTkEntry(frm1, textvariable=var, width=300, validate="key", validatecommand=vcmd_letters)
+                        w.bind("<KeyRelease>", lambda e, v=var: v.set(v.get().upper()))
                     elif kind == "entry_digit":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            width=300,
-                            validate="key",
-                            validatecommand=cmd
-                        )
-
+                        w = ctk.CTkEntry(frm1, textvariable=var, width=300, validate="key", validatecommand=cmd)
                     elif kind == "entry_pass":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            show="*",
-                            width=300
-                        )
-
+                        w = ctk.CTkEntry(frm1, textvariable=var, show="*", width=300)
                     elif kind == "entry_email":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            width=300
-                        )
-
-                    else:  # combo
-                        widget = ctk.CTkComboBox(
-                            frm,
-                            values=cmd,
-                            variable=var,
-                            width=300
-                        )
-
-                    widget.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
+                        w = ctk.CTkEntry(frm1, textvariable=var, width=300)
+                    else:
+                        w = ctk.CTkComboBox(frm1, values=cmd, variable=var, width=300)
+                    w.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
                     if i == 0:
-                        widget.focus()
+                        w.focus()
 
-                # Checkboxes de roles
-                ctk.CTkLabel(frm, text="Roles:").grid(row=len(labels), column=0, sticky="nw", pady=(10, 0))
-                rol_vars = {}
-                chk_frame = ctk.CTkFrame(frm)
-                chk_frame.grid(row=len(labels), column=1, sticky="w", pady=(10, 0))
+                ctk.CTkLabel(frm1, text="Roles:").grid(row=len(labels_ind), column=0, sticky="nw", pady=(10, 0))
+                chk_frame1 = ctk.CTkFrame(frm1)
+                chk_frame1.grid(row=len(labels_ind), column=1, sticky="w", pady=(10, 0))
                 for j, (rid, rname) in enumerate(roles):
-                    var_chk = tk.BooleanVar()
-                    rol_vars[rid] = var_chk
-                    ctk.CTkCheckBox(chk_frame, text=rname, variable=var_chk).grid(row=j, column=0, sticky="w", pady=2)
+                    ctk.CTkCheckBox(chk_frame1, text=rname, variable=rol_vars[rid]).grid(row=j, column=0, sticky="w", pady=2)
 
-                # Función auxiliar de inserción en BD
-                def _insertar_usuario(first, last, num_doc, email_addr):
+                frm2 = ctk.CTkFrame(tab_bulk, corner_radius=8)
+                frm2.pack(padx=20, pady=20, fill="both", expand=True)
+
+                labels_bulk = [
+                    ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
+                    ("Contraseña:", pwd_var, "entry_pass", None),
+                    ("Status:", stat_var, "combo", [n for _, n in statuses]),
+                ]
+                for i, (text, var, kind, cmd) in enumerate(labels_bulk):
+                    ctk.CTkLabel(frm2, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
+                    if kind == "entry_pass":
+                        w = ctk.CTkEntry(frm2, textvariable=var, show="*", width=300)
+                    elif kind == "combo":
+                        w = ctk.CTkComboBox(frm2, values=cmd, variable=var, width=300)
+                    else:
+                        w = ctk.CTkEntry(frm2, textvariable=var, width=300)
+                    w.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
+
+                ctk.CTkLabel(frm2, text="Roles:").grid(row=len(labels_bulk), column=0, sticky="nw", pady=(10, 0))
+                chk_frame2 = ctk.CTkFrame(frm2)
+                chk_frame2.grid(row=len(labels_bulk), column=1, sticky="w", pady=(10, 0))
+                for j, (rid, rname) in enumerate(roles):
+                    ctk.CTkCheckBox(chk_frame2, text=rname, variable=rol_vars[rid]).grid(row=j, column=0, sticky="w", pady=2)
+
+                def _insertar_usuario(first, last, num_doc, email_addr=""):
                     type_id = tipo_map[tipo_var.get()]
-                    cursor = self.conn.cursor()
-                    cursor.execute(
-                        "SELECT COUNT(*) FROM USERS WHERE TYPE_DOC_ID=%s AND NUM_DOC=%s",
-                        (type_id, num_doc)
-                    )
-                    if cursor.fetchone()[0] > 0:
-                        cursor.close()
-                        raise ValueError("Usuario duplicado")
-
+                    cur_i = self.conn.cursor()
+                    cur_i.execute("SELECT COUNT(*) FROM USERS WHERE TYPE_DOC_ID=%s AND NUM_DOC=%s", (type_id, num_doc))
+                    if cur_i.fetchone()[0] > 0:
+                        cur_i.close()
+                        raise ValueError("dup")
                     raw_pwd = pwd_var.get().strip()
                     pwd_bytes = raw_pwd.encode('utf-8')
                     salt = bcrypt.gensalt(rounds=12)
                     pwd_hash = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
-
                     status_id = status_map[stat_var.get()]
                     selected = [rid for rid, v in rol_vars.items() if v.get()]
-
-                    cursor.execute(
+                    cur_i.execute(
                         """
                         INSERT INTO USERS
                         (FIRST_NAME, LAST_NAME, TYPE_DOC_ID, NUM_DOC, PASSWORD, CORREO, STATUS_ID)
                         OUTPUT INSERTED.ID
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
                         """,
-                        (first, last, type_id, num_doc, pwd_hash, email_addr, status_id)
+                        (first, last, type_id, num_doc, pwd_hash, email_addr, status_id),
                     )
-                    new_id = cursor.fetchone()[0]
-
+                    new_id = cur_i.fetchone()[0]
                     for rid in selected:
-                        cursor.execute(
-                            "INSERT INTO USER_ROLES (USER_ID, ROL_ID) VALUES (%s, %s)",
-                            (new_id, rid)
-                        )
-
+                        cur_i.execute("INSERT INTO USER_ROLES (USER_ID, ROL_ID) VALUES (%s, %s)", (new_id, rid))
                     self.conn.commit()
-                    cursor.close()
+                    cur_i.close()
                     return new_id
 
-                # Función para guardar usuario manual
                 def guardar_usuario(event=None):
-                    # Validar campos
                     if not all([fn_var.get(), ln_var.get(), doc_var.get(), pwd_var.get(), email_var.get()]):
-                        messagebox.showwarning("Faltan datos", "Completa todos los campos.")
-                        return
-
-                    # Validar correo
-                    email = email_var.get().strip()
-                    if not validate_email(email):
-                        messagebox.showwarning("Correo inválido", "Por favor ingresa un correo válido.")
-                        return
-
-                    # Validar longitud de la contraseña
+                        return messagebox.showwarning("Faltan datos", "Completa todos los campos.")
+                    if not validate_email(email_var.get().strip()):
+                        return messagebox.showwarning("Correo inválido", "Por favor ingresa un correo válido.")
                     if len(pwd_var.get().strip()) < 6:
-                        messagebox.showwarning("Contraseña inválida", "La contraseña debe tener al menos 6 caracteres.")
-                        return
-
-                    # Validar si al menos un rol ha sido seleccionado
+                        return messagebox.showwarning("Contraseña inválida", "La contraseña debe tener al menos 6 caracteres.")
                     if not any(v.get() for v in rol_vars.values()):
-                        messagebox.showwarning("Faltan roles", "Debe seleccionar al menos un rol para el usuario.")
-                        return
-
+                        return messagebox.showwarning("Faltan roles", "Debe seleccionar al menos un rol para el usuario.")
                     try:
-                        new_id = _insertar_usuario(
-                            fn_var.get().strip(),
-                            ln_var.get().strip(),
-                            int(doc_var.get().strip()),
-                            email
-                        )
+                        new_id = _insertar_usuario(fn_var.get().strip(), ln_var.get().strip(), int(doc_var.get().strip()), email_var.get().strip())
                         messagebox.showinfo("Éxito", f"Usuario creado con ID {new_id}")
                         top.destroy()
+                    except ValueError:
+                        messagebox.showerror("Duplicado", "Ya existe un usuario con ese tipo y número de documento.")
                     except Exception as e:
                         messagebox.showerror("Error", str(e))
 
                 def importar_excel():
-                    path = filedialog.askopenfilename(
-                        title="Archivo de usuarios",
-                        filetypes=[("Excel", "*.xls*")]
-                    )
+                    path = filedialog.askopenfilename(title="Archivo de usuarios", filetypes=[("Excel", "*.xls*")])
                     if not path:
                         return
                     try:
                         df = pd.read_excel(path, header=None)
                     except Exception as e:
                         return messagebox.showerror("Error", f"No se pudo leer el archivo:\n{e}")
-
                     usuarios = []
                     for _, row in df.iterrows():
                         try:
@@ -4627,19 +4581,21 @@ if "--crear-usuario" in sys.argv:
                         return messagebox.showinfo("Sin datos", "No se encontraron usuarios válidos")
 
                     creados = 0
+                    repetidos = 0
                     for first, last, num in usuarios:
                         try:
-                            _insertar_usuario(first, last, num, email_var.get().strip())
+                            _insertar_usuario(first, last, num)
                             creados += 1
+                        except ValueError:
+                            repetidos += 1
                         except Exception:
                             continue
-                    messagebox.showinfo("Importación", f"Usuarios creados: {creados}")
+                    messagebox.showinfo("Importación", f"Usuarios creados: {creados}\nRepetidos: {repetidos}")
 
-                # Botones
-                btn = ctk.CTkButton(frm, text="Guardar Usuario", command=guardar_usuario, width=200)
-                btn.grid(row=len(labels)+1, column=0, columnspan=2, pady=(20,5))
-                btn_imp = ctk.CTkButton(frm, text="Cargar Excel", command=importar_excel, width=200)
-                btn_imp.grid(row=len(labels)+2, column=0, columnspan=2)
+                btn_save = ctk.CTkButton(frm1, text="Guardar Usuario", command=guardar_usuario, width=200)
+                btn_save.grid(row=len(labels_ind)+1, column=0, columnspan=2, pady=(20,5))
+                btn_imp = ctk.CTkButton(frm2, text="Cargar Excel", command=importar_excel, width=200)
+                btn_imp.grid(row=len(labels_bulk)+1, column=0, columnspan=2, pady=20)
                 top.bind("<Return>", guardar_usuario)
         def run(self):
             self.crear_usuario()
