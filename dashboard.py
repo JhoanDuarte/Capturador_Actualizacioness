@@ -3209,6 +3209,9 @@ def ver_progreso(root, conn):
         sql_tot_proc = (
             "SELECT COUNT(*) "
             "FROM ASIGNACION_TIPIFICACION a "
+            "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
+            "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
+            "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
             f"WHERE {where} AND a.STATUS_ID IN (3,4)"
         )
         cur2.execute(sql_tot_proc, params)
@@ -3217,7 +3220,11 @@ def ver_progreso(root, conn):
 
         cur3 = conn.cursor()
         sql_tot_all = (
-            "SELECT COUNT(*) FROM ASIGNACION_TIPIFICACION a "
+            "SELECT COUNT(*) "
+            "FROM ASIGNACION_TIPIFICACION a "
+            "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
+            "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
+            "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
             f"WHERE {where}"
         )
         cur3.execute(sql_tot_all, params)
