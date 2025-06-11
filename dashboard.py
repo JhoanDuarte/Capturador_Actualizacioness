@@ -3194,7 +3194,7 @@ def ver_progreso(root, conn):
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
             "LEFT JOIN USERS u ON a.USER_ASIGNED = u.ID "
-            f"WHERE {where} GROUP BY s.NAME ORDER BY s.NAME"
+            f"WHERE {where} AND s.ID <= 4 GROUP BY s.NAME ORDER BY s.NAME"
         )
         cur.execute(sql1, params)
         rows1 = cur.fetchall()
@@ -3213,7 +3213,7 @@ def ver_progreso(root, conn):
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
             "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
             "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
-            f"WHERE {where} AND a.STATUS_ID <> 1"
+            f"WHERE {where} AND a.STATUS_ID <> 1 AND s.ID <= 4"
         )
         cur2.execute(sql_tot_asig, params)
         total_asignados = cur2.fetchone()[0] or 0
@@ -3226,7 +3226,7 @@ def ver_progreso(root, conn):
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
             "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
             "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
-            f"WHERE {where}"
+            f"WHERE {where} AND s.ID <= 4"
         )
         cur3.execute(sql_tot_all, params)
         total_global = cur3.fetchone()[0] or 0
@@ -3256,7 +3256,7 @@ def ver_progreso(root, conn):
                 JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO
                 JOIN USERS u ON t.USER_ID = u.ID
                 JOIN STATUS s ON a.STATUS_ID = s.ID
-                WHERE {where}
+                WHERE {where} AND s.ID <= 4
                     -- excluir los que son exactamente medianoche
                     AND t.fecha_creacion <> CAST(t.fecha_creacion AS date)
             ) sub
@@ -3288,9 +3288,9 @@ def ver_progreso(root, conn):
             "       SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "JOIN USERS u ON a.USER_ASIGNED = u.ID "
+            "JOIN USERS u ON u.ID = CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END "
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
-            f"WHERE {where} GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME ORDER BY USUARIO"
+            f"WHERE {where} AND s.ID <= 4 GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME ORDER BY USUARIO"
         )
         cur3.execute(sql2, params)
         rows2 = cur3.fetchall()
@@ -3315,7 +3315,7 @@ def ver_progreso(root, conn):
                JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO
                JOIN USERS u       ON t.USER_ID        = u.ID
                JOIN STATUS s      ON a.STATUS_ID      = s.ID
-               WHERE {where}
+               WHERE {where} AND s.ID <= 4
                  -- excluir los que son exactamente medianoche
                  AND t.fecha_creacion <> CAST(t.fecha_creacion AS date)
            ) sub2
@@ -3757,7 +3757,7 @@ def actualizar_tabs(win, conn, num_paquete,where, params):
         SELECT UPPER(s.NAME) AS ESTADO, COUNT(*) AS CNT
           FROM ASIGNACION_TIPIFICACION at
           JOIN STATUS s ON at.STATUS_ID = s.ID
-         WHERE at.NUM_PAQUETE = %s
+         WHERE at.NUM_PAQUETE = %s AND s.ID <= 4
          GROUP BY s.NAME
          ORDER BY s.NAME
     """, (num_paquete,))
@@ -3802,8 +3802,8 @@ def actualizar_tabs(win, conn, num_paquete,where, params):
                SUM(CASE WHEN at.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS
           FROM ASIGNACION_TIPIFICACION at
           LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = at.RADICADO
-          JOIN USERS u     ON at.USER_ASIGNED = u.ID
-         WHERE at.NUM_PAQUETE = %s
+          JOIN USERS u     ON u.ID = CASE WHEN at.STATUS_ID=2 THEN at.USER_ASIGNED ELSE t.USER_ID END
+         WHERE at.NUM_PAQUETE = %s AND at.STATUS_ID <= 4
          GROUP BY u.ID, u.FIRST_NAME, u.LAST_NAME
          ORDER BY USUARIO
     """, (num_paquete,))
