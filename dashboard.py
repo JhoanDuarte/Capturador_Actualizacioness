@@ -165,7 +165,7 @@ class AutocompleteEntry(ctk.CTkEntry):
         if not txt:
             return self._hide_listbox()
 
-        matches = [v for v in self._values if v.lower().startswith(txt)]
+        matches = [v for v in self._values if txt in v.lower()]
         if not matches:
             return self._hide_listbox()
 
@@ -3079,21 +3079,20 @@ def ver_progreso(root, conn):
 
     # — Construye WHERE y parámetros según filtros de UI —
     def construir_filtros():
-        try:
-            pkg = int(pkg_var.get())
-        except ValueError:
-            messagebox.showwarning(
-                "Selección inválida", "Selecciona un paquete válido."
-            )
-            return None, None, None, None
+        filtros = []
+        params = []
 
-        filtros = ["a.NUM_PAQUETE = %s"]
-        params = [pkg]
+        sel_pkgs = [int(p) for p, v in paquete_vars.items() if v.get()]
+        if sel_pkgs:
+            ph = ", ".join("%s" for _ in sel_pkgs)
+            filtros.append(f"a.NUM_PAQUETE IN ({ph})")
+            params.extend(sel_pkgs)
 
-        tipo = var_tipo_paquete.get().strip()
-        if tipo:
-            filtros.append("a.TIPO_PAQUETE = %s")
-            params.append(tipo)
+        sel_tipos = [t for t, v in tipo_vars.items() if v.get() and t]
+        if sel_tipos:
+            ph = ", ".join("%s" for _ in sel_tipos)
+            filtros.append(f"a.TIPO_PAQUETE IN ({ph})")
+            params.extend(sel_tipos)
 
         if var_fecha_desde.get().strip():
             d1 = fecha_desde.get_date()
@@ -3129,8 +3128,8 @@ def ver_progreso(root, conn):
                 filtros.append(f"a.RADICADO IN ({ph})")
                 params.extend(lista)
 
-        where_clause = " AND ".join(filtros)
-        return where_clause, tuple(params), pkg, tipo
+        where_clause = " AND ".join(filtros) if filtros else "1=1"
+        return where_clause, tuple(params)
     
 
     # — Filtrar/mostrar solo checks de estado coincidentes —
@@ -3178,7 +3177,7 @@ def ver_progreso(root, conn):
 
     def actualizar_tabs():
         # 0) Reconstruye filtros y params
-        where, params, pkg_sel, tipo_sel = construir_filtros()
+        where, params = construir_filtros()
         if where is None:
             return
 
@@ -3207,16 +3206,16 @@ def ver_progreso(root, conn):
 
         # --- Totales generales ---
         cur2 = conn.cursor()
-        sql_tot_asig = (
+        sql_tot_proc = (
             "SELECT COUNT(*) "
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
             "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
             "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
-            f"WHERE {where} AND a.STATUS_ID <> 1 AND s.ID <= 4"
+            f"WHERE {where} AND a.STATUS_ID IN (3,4)"
         )
-        cur2.execute(sql_tot_asig, params)
-        total_asignados = cur2.fetchone()[0] or 0
+        cur2.execute(sql_tot_proc, params)
+        total_procesado = cur2.fetchone()[0] or 0
         cur2.close()
 
         cur3 = conn.cursor()
@@ -3226,16 +3225,16 @@ def ver_progreso(root, conn):
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
             "LEFT JOIN USERS u        ON a.USER_ASIGNED   = u.ID "
             "LEFT JOIN STATUS s       ON a.STATUS_ID      = s.ID "
-            f"WHERE {where} AND s.ID <= 4"
+            f"WHERE {where}"
         )
         cur3.execute(sql_tot_all, params)
         total_global = cur3.fetchone()[0] or 0
         cur3.close()
 
         fila_final = len(rows1)
-        ctk.CTkLabel(frame1, text="TOTAL ASIGNADOS", font=("Arial", 12, "bold")) \
+        ctk.CTkLabel(frame1, text="TOTAL PROCESADO", font=("Arial", 12, "bold")) \
             .grid(row=fila_final, column=0, sticky="w", padx=5, pady=4)
-        ctk.CTkLabel(frame1, text=str(total_asignados), font=("Arial", 12, "bold")) \
+        ctk.CTkLabel(frame1, text=str(total_procesado), font=("Arial", 12, "bold")) \
             .grid(row=fila_final, column=1, sticky="e", padx=5, pady=4)
 
         ctk.CTkLabel(frame1, text="TOTAL GENERAL", font=("Arial", 12, "bold")) \
@@ -3282,22 +3281,18 @@ def ver_progreso(root, conn):
         cur3 = conn.cursor()
         sql2 = (
             "SELECT "
-            "  COALESCE(u_t.ID, u_a.ID) AS ID, "
-            "  COALESCE(u_t.FIRST_NAME + ' ' + u_t.LAST_NAME, "
-            "           u_a.FIRST_NAME + ' ' + u_a.LAST_NAME, 'SIN USUARIO') AS USUARIO, "
+            "  CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END AS ID, "
+            "  u.FIRST_NAME + ' ' + u.LAST_NAME AS USUARIO, "
             "  SUM(CASE WHEN a.STATUS_ID=2 THEN 1 ELSE 0 END) AS PENDIENTES, "
             "  SUM(CASE WHEN a.STATUS_ID=3 THEN 1 ELSE 0 END) AS PROCESADOS, "
             "  SUM(CASE WHEN a.STATUS_ID=4 THEN 1 ELSE 0 END) AS CON_OBS "
             "FROM ASIGNACION_TIPIFICACION a "
             "LEFT JOIN TIPIFICACION t ON t.ASIGNACION_ID = a.RADICADO "
-            "LEFT JOIN USERS u_a ON a.USER_ASIGNED = u_a.ID "
-            "LEFT JOIN USERS u_t ON t.USER_ID = u_t.ID "
-            "LEFT JOIN USERS u   ON COALESCE(t.USER_ID, a.USER_ASIGNED) = u.ID "
+            "JOIN USERS u ON u.ID = CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END "
             "JOIN STATUS s ON a.STATUS_ID = s.ID "
-            f"WHERE {where} AND s.ID <= 4 "
-            "GROUP BY COALESCE(u_t.ID, u_a.ID), "
-            "         COALESCE(u_t.FIRST_NAME + ' ' + u_t.LAST_NAME, "
-            "                  u_a.FIRST_NAME + ' ' + u_a.LAST_NAME) "
+            f"WHERE {where} AND a.STATUS_ID <= 4 "
+            "GROUP BY CASE WHEN a.STATUS_ID=2 THEN a.USER_ASIGNED ELSE t.USER_ID END, "
+            "         u.FIRST_NAME, u.LAST_NAME "
             "ORDER BY USUARIO"
         )
         cur3.execute(sql2, params)
@@ -3442,17 +3437,33 @@ def ver_progreso(root, conn):
 
             
     def exportar():
-        where, params, _, _ = construir_filtros()
+        where, params = construir_filtros()
         if where is None:
             return
 
         # Detectamos tipo de paquete y campos configurados
-        tipo = var_tipo_paquete.get().strip().upper()
+        sel_pkgs = [int(p) for p, v in paquete_vars.items() if v.get()]
+        sel_tipos = [t for t, v in tipo_vars.items() if v.get()]
+
         cur_f = conn.cursor()
-        cur_f.execute(
-            "SELECT campo FROM PAQUETE_CAMPOS WHERE NUM_PAQUETE=%s AND tipo_paquete=%s",
-            (int(pkg_var.get()), tipo)
-        )
+        if sel_pkgs or sel_tipos:
+            clauses = []
+            params_c = []
+            if sel_pkgs:
+                ph = ", ".join("%s" for _ in sel_pkgs)
+                clauses.append(f"NUM_PAQUETE IN ({ph})")
+                params_c.extend(sel_pkgs)
+            if sel_tipos:
+                ph = ", ".join("%s" for _ in sel_tipos)
+                clauses.append(f"tipo_paquete IN ({ph})")
+                params_c.extend(sel_tipos)
+            where_c = " AND ".join(clauses)
+            cur_f.execute(
+                f"SELECT DISTINCT campo FROM PAQUETE_CAMPOS WHERE {where_c}",
+                params_c,
+            )
+        else:
+            cur_f.execute("SELECT DISTINCT campo FROM PAQUETE_CAMPOS")
         campos_set = {r[0] for r in cur_f.fetchall()}
         cur_f.close()
 
@@ -3478,6 +3489,10 @@ def ver_progreso(root, conn):
             select_cols.append("t.NUM_DOC AS NumeroDocumento")
         if "COPAGO" in campos_set:
             select_cols.append("d.COPAGO AS CM_COPAGO")
+
+        # Siempre incluir identificadores de paquete justo despues de CM_COPAGO
+        select_cols.append("a.NUM_PAQUETE AS NUM_PAQUETE")
+        select_cols.append("a.TIPO_PAQUETE AS TIPO_PAQUETE")
         if "OBSERVACION" in campos_set:
             select_cols.append("d.OBSERVACION")
         select_cols.append("COALESCE(s.NAME, '') AS ESTADO")
@@ -3626,25 +3641,93 @@ def ver_progreso(root, conn):
     content = ctk.CTkFrame(win, fg_color="transparent")
     content.pack(side="left", fill="both", expand=True, padx=(0, 20), pady=20)
 
-    # Paquete
+    # Paquete (multi-selección)
     cur = conn.cursor()
     cur.execute("SELECT DISTINCT NUM_PAQUETE FROM ASIGNACION_TIPIFICACION ORDER BY NUM_PAQUETE")
-    paquetes = [str(r[0]) for r in cur.fetchall()] or ["0"]
+    paquetes = [str(r[0]) for r in cur.fetchall()]
     cur.close()
-    pkg_var = tk.StringVar(value=paquetes[0])
     ctk.CTkLabel(sidebar, text="Paquete:").grid(row=0, column=0, sticky="w")
-    ctk.CTkOptionMenu(sidebar, values=paquetes, variable=pkg_var, width=120).grid(row=0, column=1, padx=(0,10), sticky="w")
-    pkg_var.trace_add("write", lambda *a: actualizar_tabs())
+    buscar_pkg = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar paquete...")
+    buscar_pkg.grid(row=0, column=1, columnspan=2, sticky="w", padx=(0,10))
 
-    # Tipo de paquete
+    def _filtrar_pkg(event=None):
+        term = buscar_pkg.get().lower()
+        for p in paquetes:
+            cb = paquete_checks[p]
+            cb.pack_forget()
+            if term in p.lower():
+                cb.pack(anchor="w", pady=2)
+
+    def _marcar_pkg(val):
+        for var in paquete_vars.values():
+            var.set(val)
+        actualizar_tabs()
+
+    def _solo_visibles_pkg():
+        for p in paquetes:
+            cb = paquete_checks[p]
+            paquete_vars[p].set(cb.winfo_ismapped())
+        actualizar_tabs()
+
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_pkg(True), width=60).grid(row=1, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_pkg, width=80).grid(row=1, column=1)
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_pkg(False), width=60).grid(row=1, column=2, sticky="e")
+    pkg_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
+    pkg_frame.grid(row=2, column=0, columnspan=3, sticky="w")
+    paquete_vars = {}
+    paquete_checks = {}
+    for p in paquetes:
+        var = tk.BooleanVar(value=True)
+        cb = ctk.CTkCheckBox(pkg_frame, text=p, variable=var, command=actualizar_tabs)
+        cb.pack(anchor="w", pady=2)
+        paquete_vars[p] = var
+        paquete_checks[p] = cb
+
+    buscar_pkg.bind("<KeyRelease>", _filtrar_pkg)
+
+    # Tipo de paquete (multi-selección)
     cur = conn.cursor()
     cur.execute("SELECT DISTINCT TIPO_PAQUETE FROM ASIGNACION_TIPIFICACION ORDER BY TIPO_PAQUETE")
     tipos_paquete = [r[0] or "" for r in cur.fetchall()]
     cur.close()
-    var_tipo_paquete = tk.StringVar(value=tipos_paquete[0])
-    ctk.CTkLabel(sidebar, text="Tipo Paquete:").grid(row=1, column=0, sticky="w", pady=(10,0))
-    ctk.CTkOptionMenu(sidebar, values=tipos_paquete, variable=var_tipo_paquete, width=120).grid(row=1, column=1, padx=(0,10), sticky="w")
-    var_tipo_paquete.trace_add("write", lambda *a: actualizar_tabs())
+    ctk.CTkLabel(sidebar, text="Tipo Paquete:").grid(row=3, column=0, sticky="w", pady=(10,0))
+    buscar_tipo = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar tipo...")
+    buscar_tipo.grid(row=3, column=1, columnspan=2, sticky="w", padx=(0,10))
+
+    def _filtrar_tipo(event=None):
+        term = buscar_tipo.get().lower()
+        for t in tipos_paquete:
+            cb = tipo_checks[t]
+            cb.pack_forget()
+            if term in str(t).lower():
+                cb.pack(anchor="w", pady=2)
+
+    def _marcar_tipo(val):
+        for var in tipo_vars.values():
+            var.set(val)
+        actualizar_tabs()
+
+    def _solo_visibles_tipo():
+        for t in tipos_paquete:
+            cb = tipo_checks[t]
+            tipo_vars[t].set(cb.winfo_ismapped())
+        actualizar_tabs()
+
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_tipo(True), width=60).grid(row=4, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_tipo, width=80).grid(row=4, column=1)
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_tipo(False), width=60).grid(row=4, column=2, sticky="e")
+    tipo_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
+    tipo_frame.grid(row=5, column=0, columnspan=3, sticky="w")
+    tipo_vars = {}
+    tipo_checks = {}
+    for t in tipos_paquete:
+        var = tk.BooleanVar(value=True)
+        cb = ctk.CTkCheckBox(tipo_frame, text=str(t), variable=var, command=actualizar_tabs)
+        cb.pack(anchor="w", pady=2)
+        tipo_vars[t] = var
+        tipo_checks[t] = cb
+
+    buscar_tipo.bind("<KeyRelease>", _filtrar_tipo)
 
     # Fechas
     var_fecha_desde = tk.StringVar()
@@ -3659,40 +3742,40 @@ def ver_progreso(root, conn):
         fecha_desde.delete(0, "end")
         fecha_hasta.delete(0, "end")
     
-    ctk.CTkLabel(sidebar, text="Desde:").grid(row=2, column=0, sticky="w", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Desde:").grid(row=6, column=0, sticky="w", pady=(10,0))
     fecha_desde = DateEntry(sidebar, width=12, locale='es_CO',
                             date_pattern='dd/MM/yyyy',
                             textvariable=var_fecha_desde)
-    fecha_desde.grid(row=2, column=1, padx=(0,10), sticky="w")
+    fecha_desde.grid(row=6, column=1, padx=(0,10), sticky="w")
     fecha_desde.delete(0, 'end')
     # Actualiza solo cuando el usuario selecciona una fecha o termina de editar
     fecha_desde.bind("<<DateEntrySelected>>", lambda e: actualizar_tabs())
 
-    ctk.CTkLabel(sidebar, text="Hasta:").grid(row=3, column=0, sticky="w")
+    ctk.CTkLabel(sidebar, text="Hasta:").grid(row=7, column=0, sticky="w")
     fecha_hasta = DateEntry(sidebar, width=12, locale='es_CO',
                             date_pattern='dd/MM/yyyy',
                             textvariable=var_fecha_hasta)
-    fecha_hasta.grid(row=3, column=1, padx=(0,10), sticky="w")
+    fecha_hasta.grid(row=7, column=1, padx=(0,10), sticky="w")
     fecha_hasta.delete(0, 'end')
     # Igual que para la fecha inicial, actualiza al finalizar la selección
     fecha_hasta.bind("<<DateEntrySelected>>", lambda e: actualizar_tabs())
 
-    ctk.CTkButton(sidebar, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=4, column=0, columnspan=2, pady=(10,0))
-    ctk.CTkButton(sidebar, text="Exportar", command=exportar, width=100).grid(row=5, column=0, columnspan=2, pady=(10,0))
+    ctk.CTkButton(sidebar, text="Limpiar fechas", command=limpiar_fechas, width=100).grid(row=8, column=0, columnspan=2, pady=(10,0))
+    ctk.CTkButton(sidebar, text="Exportar", command=exportar, width=100).grid(row=9, column=0, columnspan=2, pady=(10,0))
     # Filtro de estados
     cur = conn.cursor()
-    cur.execute("SELECT NAME FROM STATUS ORDER BY NAME")
+    cur.execute("SELECT NAME FROM STATUS WHERE ID BETWEEN 1 AND 4 ORDER BY NAME")
     estados = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Estado:").grid(row=6, column=0, sticky="w", pady=(10,5))
+    ctk.CTkLabel(sidebar, text="Estado:").grid(row=10, column=0, sticky="w", pady=(10,5))
     buscar_est = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar estado...")
-    buscar_est.grid(row=6, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
+    buscar_est.grid(row=10, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
     buscar_est.bind("<KeyRelease>", _filtrar_est)
-    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=7, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=80).grid(row=7, column=1)
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=7, column=2, sticky="e")
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_est(True), width=60).grid(row=11, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_est, width=80).grid(row=11, column=1)
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_est(False), width=60).grid(row=11, column=2, sticky="e")
     estado_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
-    estado_frame.grid(row=8, column=0, columnspan=3, sticky="w")
+    estado_frame.grid(row=12, column=0, columnspan=3, sticky="w")
     estado_vars = {}
     estado_checks = {}
     for est in estados:
@@ -3717,16 +3800,16 @@ def ver_progreso(root, conn):
     cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
-    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=9, column=0, sticky="w", pady=(10,5))
+    ctk.CTkLabel(sidebar, text="Usuario:").grid(row=13, column=0, sticky="w", pady=(10,5))
     buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
-    buscar_usr.grid(row=9, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
+    buscar_usr.grid(row=13, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
     buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=10, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=80).grid(row=10, column=1)
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=10, column=2, sticky="e")
+    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=14, column=0, sticky="w")
+    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=80).grid(row=14, column=1)
+    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=14, column=2, sticky="e")
 
     user_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
-    user_frame.grid(row=11, column=0, columnspan=3, sticky="w")
+    user_frame.grid(row=15, column=0, columnspan=3, sticky="w")
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -3737,9 +3820,9 @@ def ver_progreso(root, conn):
         user_checks[usr] = cb
         
 
-    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=12, column=0, sticky="nw", pady=(10,0))
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=16, column=0, sticky="nw", pady=(10,0))
     rad_text = ctk.CTkTextbox(sidebar, width=240, height=100)
-    rad_text.grid(row=12, column=1, columnspan=2, sticky="w", pady=(10,0))
+    rad_text.grid(row=16, column=1, columnspan=2, sticky="w", pady=(10,0))
 
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
@@ -4099,6 +4182,11 @@ def exportar_paquete(root, conn):
             select_cols.append("t.NUM_DOC AS NumeroDocumento")
         if "COPAGO" in campos_set:
             select_cols.append("d.COPAGO AS CM_COPAGO")
+
+        # Colocar identificadores de paquete a continuación de CM_COPAGO
+        select_cols.append("a.NUM_PAQUETE AS NUM_PAQUETE")
+        select_cols.append("a.TIPO_PAQUETE AS TIPO_PAQUETE")
+
         if "OBSERVACION" in campos_set:
             select_cols.append("d.OBSERVACION")
         select_cols.append("t.fecha_creacion AS FechaDigitacion")
@@ -4299,219 +4387,217 @@ if "--crear-usuario" in sys.argv:
     from tkinter import messagebox
     import customtkinter as ctk
     import re, bcrypt
-    # aquí pones tu clase o función crear_usuario idéntica
+
     class AppTk:
         def __init__(self, conn):
             apply_ctk_theme_from_settings()
             self.conn = conn
             self._tk_root = tk.Tk()
             self._tk_root.withdraw()
+
         def crear_usuario(self):
-        # —–– Asegurarse de tener un root de Tkinter para el register() —––
-                if not hasattr(self, '_tk_root'):
-                    self._tk_root = tk.Tk()
-                    self._tk_root.withdraw()
+            if not hasattr(self, '_tk_root'):
+                self._tk_root = tk.Tk()
+                self._tk_root.withdraw()
 
-                # Validaciones
-                def only_letters_and_spaces(P):
-                    # P es el texto completo tras el cambio
-                    return all(c.isalpha() or c == ' ' for c in P)
+            # Validaciones
+            def only_letters_and_spaces(P):
+                # P es el texto completo tras el cambio
+                return all(c.isalpha() or c == ' ' for c in P)
 
-                def only_digits(P):
-                    return P == "" or P.isdigit()
+            def only_digits(P):
+                return P == "" or P.isdigit()
 
-                def validate_email(email):
-                    regex = r'^[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z0-9\-.]+$'
-                    return re.match(regex, email) is not None
+            def validate_email(email):
+                regex = r'^[a-zA-Z0-9_.+\-]+@[a-zA-Z0-9\-]+\.[a-zA-Z0-9\-.]+$'
+                return re.match(regex, email) is not None
 
-                # Aquí usamos el register() del Tk oculto
-                vcmd_letters = (self._tk_root.register(only_letters_and_spaces), '%P')
-                vcmd_digits  = (self._tk_root.register(only_digits), '%P')
+            # Registros y validadores
+            vcmd_letters = (self._tk_root.register(only_letters_and_spaces), '%P')
+            vcmd_digits = (self._tk_root.register(only_digits), '%P')
 
-                # Crear ventana secundaria
-                top = ctk.CTkToplevel(self._tk_root)
-                top.title("Crear Usuario")
-                top.geometry("500x600")
-                top.resizable(False, False)
+            top = ctk.CTkToplevel(self._tk_root)
+            top.title("Crear Usuario")
+            top.geometry("520x650")
+            top.resizable(False, False)
 
-                # Recuperar catálogos
-                cur = self.conn.cursor()
-                cur.execute("SELECT ID, NAME FROM TIPO_DOC")
-                tipos = cur.fetchall()
-                cur.execute("SELECT ID, NAME FROM STATUS WHERE ID IN (%s, %s)", (5, 6))
-                statuses = cur.fetchall()
-                cur.execute("SELECT ID, NAME FROM ROL")
-                roles = cur.fetchall()
-                cur.close()
+            cur = self.conn.cursor()
+            cur.execute("SELECT ID, NAME FROM TIPO_DOC")
+            tipos = cur.fetchall()
+            cur.execute("SELECT ID, NAME FROM STATUS WHERE ID IN (%s, %s)", (5, 6))
+            statuses = cur.fetchall()
+            cur.execute("SELECT ID, NAME FROM ROL")
+            roles = cur.fetchall()
+            cur.close()
 
-                tipo_map   = {name: tid for tid, name in tipos}
-                status_map = {name: sid for sid, name in statuses}
+            tipo_map = {name: tid for tid, name in tipos}
+            status_map = {name: sid for sid, name in statuses}
 
-                # Variables
-                fn_var   = tk.StringVar()
-                ln_var   = tk.StringVar()
-                doc_var  = tk.StringVar()
-                pwd_var  = tk.StringVar()
-                email_var = tk.StringVar()  # Variable para el correo
-                tipo_var = tk.StringVar(value=tipos[0][1] if tipos else "")
-                stat_var = tk.StringVar(value=statuses[0][1] if statuses else "")
+            tipo_var = tk.StringVar(value=tipos[0][1] if tipos else "")
+            pwd_var = tk.StringVar()
+            stat_var = tk.StringVar(value=statuses[0][1] if statuses else "")
+            rol_vars = {rid: tk.BooleanVar() for rid, _ in roles}
 
-                # Frame
-                top.grid_rowconfigure(0, weight=1)
-                top.grid_columnconfigure(0, weight=1)
-                frm = ctk.CTkFrame(top, corner_radius=8)
-                frm.grid(row=0, column=0, padx=20, pady=20)
+            tabs = ctk.CTkTabview(top, width=480, height=580)
+            tabs.pack(padx=10, pady=10, fill="both", expand=True)
+            tab_ind = tabs.add("Individual")
+            tab_bulk = tabs.add("Masivo")
 
-                # Definición de campos
-                labels = [
-                    ("Nombres:", fn_var, "entry_upper", vcmd_letters),
-                    ("Apellidos:", ln_var, "entry_upper", vcmd_letters),
-                    ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
-                    ("N° Documento:", doc_var, "entry_digit", vcmd_digits),
-                    ("Correo:", email_var, "entry_email", None),  # Nuevo campo correo
-                    ("Contraseña:", pwd_var, "entry_pass", None),
-                    ("Status:", stat_var, "combo", [n for _, n in statuses])
-                ]
+            fn_var = tk.StringVar()
+            ln_var = tk.StringVar()
+            doc_var = tk.StringVar()
+            email_var = tk.StringVar()
 
-                for i, (text, var, kind, cmd) in enumerate(labels):
-                    ctk.CTkLabel(frm, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
-                    if kind == "entry_upper":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            width=300,
-                            validate="key",
-                            validatecommand=vcmd_letters   # <-- usa el validador actualizado
-                        )
-                        # Forzar mayúsculas tras cada tecla
-                        widget.bind("<KeyRelease>", lambda e, v=var: v.set(v.get().upper()))
+            frm1 = ctk.CTkFrame(tab_ind, corner_radius=8)
+            frm1.pack(padx=20, pady=20, fill="both", expand=True)
 
-                    elif kind == "entry_digit":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            width=300,
-                            validate="key",
-                            validatecommand=cmd
-                        )
+            labels_ind = [
+                ("Nombres:", fn_var, "entry_upper", vcmd_letters),
+                ("Apellidos:", ln_var, "entry_upper", vcmd_letters),
+                ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
+                ("N° Documento:", doc_var, "entry_digit", vcmd_digits),
+                ("Correo:", email_var, "entry_email", None),
+                ("Contraseña:", pwd_var, "entry_pass", None),
+                ("Status:", stat_var, "combo", [n for _, n in statuses]),
+            ]
+            for i, (text, var, kind, cmd) in enumerate(labels_ind):
+                ctk.CTkLabel(frm1, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
+                if kind == "entry_upper":
+                    w = ctk.CTkEntry(frm1, textvariable=var, width=300, validate="key", validatecommand=vcmd_letters)
+                    w.bind("<KeyRelease>", lambda e, v=var: v.set(v.get().upper()))
+                elif kind == "entry_digit":
+                    w = ctk.CTkEntry(frm1, textvariable=var, width=300, validate="key", validatecommand=cmd)
+                elif kind == "entry_pass":
+                    w = ctk.CTkEntry(frm1, textvariable=var, show="*", width=300)
+                elif kind == "entry_email":
+                    w = ctk.CTkEntry(frm1, textvariable=var, width=300)
+                else:
+                    w = ctk.CTkComboBox(frm1, values=cmd, variable=var, width=300)
+                w.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
+                if i == 0:
+                    w.focus()
 
-                    elif kind == "entry_pass":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            show="*",
-                            width=300
-                        )
+            # ---- Roles para tab Individual ----
+            ctk.CTkLabel(frm1, text="Roles:").grid(row=len(labels_ind), column=0, sticky="nw", pady=(10, 0))
+            chk_frame1 = ctk.CTkFrame(frm1)
+            chk_frame1.grid(row=len(labels_ind), column=1, sticky="w", pady=(10, 0))
+            for j, (rid, rname) in enumerate(roles):
+                ctk.CTkCheckBox(chk_frame1, text=rname, variable=rol_vars[rid]).grid(row=j, column=0, sticky="w", pady=2)
 
-                    elif kind == "entry_email":
-                        widget = ctk.CTkEntry(
-                            frm,
-                            textvariable=var,
-                            width=300
-                        )
+            # ---- Tab Masivo ----
+            frm2 = ctk.CTkFrame(tab_bulk, corner_radius=8)
+            frm2.pack(padx=20, pady=20, fill="both", expand=True)
 
-                    else:  # combo
-                        widget = ctk.CTkComboBox(
-                            frm,
-                            values=cmd,
-                            variable=var,
-                            width=300
-                        )
+            labels_bulk = [
+                ("Tipo Doc:", tipo_var, "combo", [n for _, n in tipos]),
+                ("Contraseña:", pwd_var, "entry_pass", None),
+                ("Status:", stat_var, "combo", [n for _, n in statuses]),
+            ]
+            for i, (text, var, kind, cmd) in enumerate(labels_bulk):
+                ctk.CTkLabel(frm2, text=text).grid(row=i, column=0, sticky="w", pady=(10, 0))
+                if kind == "entry_pass":
+                    w = ctk.CTkEntry(frm2, textvariable=var, show="*", width=300)
+                elif kind == "combo":
+                    w = ctk.CTkComboBox(frm2, values=cmd, variable=var, width=300)
+                else:
+                    w = ctk.CTkEntry(frm2, textvariable=var, width=300)
+                w.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
 
-                    widget.grid(row=i, column=1, padx=(10, 0), pady=(10, 0))
-                    if i == 0:
-                        widget.focus()
+            ctk.CTkLabel(frm2, text="Roles:").grid(row=len(labels_bulk), column=0, sticky="nw", pady=(10, 0))
+            chk_frame2 = ctk.CTkFrame(frm2)
+            chk_frame2.grid(row=len(labels_bulk), column=1, sticky="w", pady=(10, 0))
+            for j, (rid, rname) in enumerate(roles):
+                ctk.CTkCheckBox(chk_frame2, text=rname, variable=rol_vars[rid]).grid(row=j, column=0, sticky="w", pady=2)
 
-                # Checkboxes de roles
-                ctk.CTkLabel(frm, text="Roles:").grid(row=len(labels), column=0, sticky="nw", pady=(10, 0))
-                rol_vars = {}
-                chk_frame = ctk.CTkFrame(frm)
-                chk_frame.grid(row=len(labels), column=1, sticky="w", pady=(10, 0))
-                for j, (rid, rname) in enumerate(roles):
-                    var_chk = tk.BooleanVar()
-                    rol_vars[rid] = var_chk
-                    ctk.CTkCheckBox(chk_frame, text=rname, variable=var_chk).grid(row=j, column=0, sticky="w", pady=2)
+                def _insertar_usuario(first, last, num_doc, email_addr=""):
+                    type_id = tipo_map[tipo_var.get()]
+                    cur_i = self.conn.cursor()
+                    cur_i.execute("SELECT COUNT(*) FROM USERS WHERE TYPE_DOC_ID=%s AND NUM_DOC=%s", (type_id, num_doc))
+                    if cur_i.fetchone()[0] > 0:
+                        cur_i.close()
+                        raise ValueError("dup")
+                    raw_pwd = pwd_var.get().strip()
+                    pwd_bytes = raw_pwd.encode('utf-8')
+                    salt = bcrypt.gensalt(rounds=12)
+                    pwd_hash = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+                    status_id = status_map[stat_var.get()]
+                    selected = [rid for rid, v in rol_vars.items() if v.get()]
+                    cur_i.execute(
+                        """
+                        INSERT INTO USERS
+                        (FIRST_NAME, LAST_NAME, TYPE_DOC_ID, NUM_DOC, PASSWORD, CORREO, STATUS_ID)
+                        OUTPUT INSERTED.ID
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (first, last, type_id, num_doc, pwd_hash, email_addr, status_id),
+                    )
+                    new_id = cur_i.fetchone()[0]
+                    for rid in selected:
+                        cur_i.execute("INSERT INTO USER_ROLES (USER_ID, ROL_ID) VALUES (%s, %s)", (new_id, rid))
+                    self.conn.commit()
+                    cur_i.close()
+                    return new_id
 
-                # Función para guardar usuario
                 def guardar_usuario(event=None):
-                    # Validar campos
                     if not all([fn_var.get(), ln_var.get(), doc_var.get(), pwd_var.get(), email_var.get()]):
-                        messagebox.showwarning("Faltan datos", "Completa todos los campos.")
-                        return
-
-                    # Validar correo
-                    email = email_var.get().strip()
-                    if not validate_email(email):
-                        messagebox.showwarning("Correo inválido", "Por favor ingresa un correo válido.")
-                        return
-
-                    # Validar longitud de la contraseña
+                        return messagebox.showwarning("Faltan datos", "Completa todos los campos.")
+                    if not validate_email(email_var.get().strip()):
+                        return messagebox.showwarning("Correo inválido", "Por favor ingresa un correo válido.")
                     if len(pwd_var.get().strip()) < 6:
-                        messagebox.showwarning("Contraseña inválida", "La contraseña debe tener al menos 6 caracteres.")
-                        return
-
-                    # Validar si al menos un rol ha sido seleccionado
+                        return messagebox.showwarning("Contraseña inválida", "La contraseña debe tener al menos 6 caracteres.")
                     if not any(v.get() for v in rol_vars.values()):
-                        messagebox.showwarning("Faltan roles", "Debe seleccionar al menos un rol para el usuario.")
-                        return
-
+                        return messagebox.showwarning("Faltan roles", "Debe seleccionar al menos un rol para el usuario.")
                     try:
-                        first_name = fn_var.get().strip()
-                        last_name  = ln_var.get().strip()
-                        num_doc    = int(doc_var.get().strip())
-                        email_address = email  # Correo ingresado por el usuario
-                        type_id    = tipo_map[tipo_var.get()]
-
-                        # Verificar duplicado
-                        cursor = self.conn.cursor()
-                        cursor.execute(
-                            "SELECT COUNT(*) FROM USERS WHERE TYPE_DOC_ID = %s AND NUM_DOC = %s",
-                            (type_id, num_doc)
-                        )
-                        if cursor.fetchone()[0] > 0:
-                            cursor.close()
-                            messagebox.showerror("Duplicado", "Ya existe un usuario con ese tipo y número de documento.")
-                            return
-
-                        # Cifrar contraseña con bcrypt
-                        raw_pwd   = pwd_var.get().strip()
-                        pwd_bytes = raw_pwd.encode('utf-8')
-                        salt      = bcrypt.gensalt(rounds=12)
-                        pwd_hash  = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
-
-                        status_id = status_map[stat_var.get()]
-                        selected  = [rid for rid, v in rol_vars.items() if v.get()]
-
-                        # Insertar usuario
-                        cursor.execute(
-                            """
-                            INSERT INTO USERS 
-                            (FIRST_NAME, LAST_NAME, TYPE_DOC_ID, NUM_DOC, PASSWORD, CORREO, STATUS_ID)
-                            OUTPUT INSERTED.ID
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            """,
-                            (first_name, last_name, type_id, num_doc, pwd_hash, email_address, status_id)
-                        )
-                        new_id = cursor.fetchone()[0]
-
-                        # Insertar roles
-                        for rid in selected:
-                            cursor.execute(
-                                "INSERT INTO USER_ROLES (USER_ID, ROL_ID) VALUES (%s, %s)",
-                                (new_id, rid)
-                            )
-
-                        self.conn.commit()
-                        cursor.close()
+                        new_id = _insertar_usuario(fn_var.get().strip(), ln_var.get().strip(), int(doc_var.get().strip()), email_var.get().strip())
                         messagebox.showinfo("Éxito", f"Usuario creado con ID {new_id}")
                         top.destroy()
-
+                    except ValueError:
+                        messagebox.showerror("Duplicado", "Ya existe un usuario con ese tipo y número de documento.")
                     except Exception as e:
                         messagebox.showerror("Error", str(e))
 
-                # Botón Guardar
-                btn = ctk.CTkButton(frm, text="Guardar Usuario", command=guardar_usuario, width=200)
-                btn.grid(row=len(labels)+1, column=0, columnspan=2, pady=20)
+                def importar_excel():
+                    path = filedialog.askopenfilename(title="Archivo de usuarios", filetypes=[("Excel", "*.xls*")])
+                    if not path:
+                        return
+                    try:
+                        df = pd.read_excel(path, header=None)
+                    except Exception as e:
+                        return messagebox.showerror("Error", f"No se pudo leer el archivo:\n{e}")
+                    usuarios = []
+                    for _, row in df.iterrows():
+                        try:
+                            num = int(str(row.iloc[0]).strip())
+                        except Exception:
+                            continue
+                        if len(row) >= 3:
+                            first = str(row.iloc[1]).strip()
+                            last = str(row.iloc[2]).strip()
+                        else:
+                            parts = str(row.iloc[1]).strip().split(" ", 1)
+                            first = parts[0] if parts else ""
+                            last = parts[1] if len(parts) > 1 else ""
+                        usuarios.append((first, last, num))
+
+                    if not usuarios:
+                        return messagebox.showinfo("Sin datos", "No se encontraron usuarios válidos")
+
+                    creados = 0
+                    repetidos = 0
+                    for first, last, num in usuarios:
+                        try:
+                            _insertar_usuario(first, last, num)
+                            creados += 1
+                        except ValueError:
+                            repetidos += 1
+                        except Exception:
+                            continue
+                    messagebox.showinfo("Importación", f"Usuarios creados: {creados}\nRepetidos: {repetidos}")
+
+                btn_save = ctk.CTkButton(frm1, text="Guardar Usuario", command=guardar_usuario, width=200)
+                btn_save.grid(row=len(labels_ind)+1, column=0, columnspan=2, pady=(20,5))
+                btn_imp = ctk.CTkButton(frm2, text="Cargar Excel", command=importar_excel, width=200)
+                btn_imp.grid(row=len(labels_bulk)+1, column=0, columnspan=2, pady=20)
                 top.bind("<Return>", guardar_usuario)
         def run(self):
             self.crear_usuario()
@@ -4522,7 +4608,121 @@ if "--crear-usuario" in sys.argv:
         sys.exit("No se pudo conectar a la BD.")
     AppTk(conn).run()   # ahora existe .run()
     sys.exit(0)
-    
+
+
+def liberar_radicados(root, conn):
+    """Permite liberar o reasignar radicados en estado 2."""
+    win = ctk.CTkToplevel(root)
+    win.title("Liberar Radicados")
+    win.geometry("700x500")
+    win.grab_set()
+    win.protocol("WM_DELETE_WINDOW", lambda w=win: safe_destroy(w))
+
+    # Obtener radicados asignados
+    cur = conn.cursor()
+    cur.execute(
+        """
+            SELECT a.RADICADO, u.ID, u.FIRST_NAME + ' ' + u.LAST_NAME
+              FROM ASIGNACION_TIPIFICACION a
+              JOIN USERS u ON a.USER_ASIGNED = u.ID
+             WHERE a.STATUS_ID = 2
+             ORDER BY a.RADICADO
+        """
+    )
+    rows = cur.fetchall()
+    cur.close()
+
+    # Usuarios para reasignar
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT ID, NUM_DOC, FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME"
+    )
+    urows = cur.fetchall()
+    cur.close()
+    user_opts = [f"{num} - {name}" for (uid, num, name) in urows]
+    user_map = {f"{num} - {name}": uid for (uid, num, name) in urows}
+
+    frame = ctk.CTkScrollableFrame(win, width=660, height=340)
+    frame.pack(padx=10, pady=10, fill="both", expand=True)
+
+    headers = ["RADICADO", "ASIGNADO", "NUEVO USUARIO", "", ""]
+    for j, h in enumerate(headers):
+        ctk.CTkLabel(frame, text=h, font=("Arial", 10, "bold"))\
+            .grid(row=0, column=j, padx=4, pady=2)
+
+    def crear_fila(i, radicado, asignado):
+        ctk.CTkLabel(frame, text=str(radicado)).grid(row=i, column=0, padx=4, pady=2)
+        ctk.CTkLabel(frame, text=asignado).grid(row=i, column=1, padx=4, pady=2)
+        var = tk.StringVar()
+        entry = AutocompleteEntry(frame, user_opts, textvariable=var, width=180)
+        entry.grid(row=i, column=2, padx=4, pady=2)
+
+        def do_liberar():
+            cur_l = conn.cursor()
+            cur_l.execute(
+                "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID=1, USER_ASIGNED=NULL WHERE RADICADO=%s",
+                (radicado,)
+            )
+            conn.commit()
+            cur_l.close()
+            entry.configure(state="disabled")
+            btn_lib.configure(state="disabled")
+            btn_asig.configure(state="disabled")
+
+        def do_asignar():
+            sel = var.get().strip()
+            uid = user_map.get(sel)
+            if uid is None:
+                messagebox.showwarning("Error", "Selecciona usuario válido")
+                return
+            cur_l = conn.cursor()
+            cur_l.execute(
+                "UPDATE ASIGNACION_TIPIFICACION SET USER_ASIGNED=%s WHERE RADICADO=%s",
+                (uid, radicado),
+            )
+            conn.commit()
+            cur_l.close()
+            entry.configure(state="disabled")
+            btn_lib.configure(state="disabled")
+            btn_asig.configure(state="disabled")
+
+        btn_lib = ctk.CTkButton(frame, text="Liberar", width=80, command=do_liberar)
+        btn_lib.grid(row=i, column=3, padx=4, pady=2)
+        btn_asig = ctk.CTkButton(frame, text="Asignar", width=80, command=do_asignar)
+        btn_asig.grid(row=i, column=4, padx=4, pady=2)
+
+    for idx, (rad, uid, uname) in enumerate(rows, start=1):
+        crear_fila(idx, rad, uname)
+
+    # ---- Acciones globales ----
+    bottom = ctk.CTkFrame(win, fg_color="transparent")
+    bottom.pack(pady=10)
+    ctk.CTkLabel(bottom, text="Asignar a:").grid(row=0, column=0, padx=4)
+    all_var = tk.StringVar()
+    entry_all = AutocompleteEntry(bottom, ["" ] + user_opts, textvariable=all_var, width=200)
+    entry_all.grid(row=0, column=1, padx=4)
+
+    def liberar_todos():
+        sel = all_var.get().strip()
+        uid = user_map.get(sel)
+        cur_l = conn.cursor()
+        if uid:
+            cur_l.execute(
+                "UPDATE ASIGNACION_TIPIFICACION SET USER_ASIGNED=%s WHERE STATUS_ID=2",
+                (uid,),
+            )
+        else:
+            cur_l.execute(
+                "UPDATE ASIGNACION_TIPIFICACION SET STATUS_ID=1, USER_ASIGNED=NULL WHERE STATUS_ID=2"
+            )
+        conn.commit()
+        cur_l.close()
+        messagebox.showinfo("Listo", "Radicados actualizados")
+        safe_destroy(win)
+
+    ctk.CTkButton(bottom, text="Liberar Todos", command=liberar_todos, width=120)\
+        .grid(row=0, column=2, padx=6)
+
     
 if "--iniciar-tipificacion" in sys.argv:
         # Configura tema según la preferencia guardada
@@ -4693,6 +4893,20 @@ if "--desactivar-usuario" in sys.argv:
         modificar_estado_usuario(root, conn)
 
         # 5) arranca el loop de Tk para CustomTkinter
+        root.mainloop()
+        sys.exit(0)
+
+if "--liberar-radicados" in sys.argv:
+        apply_ctk_theme_from_settings()
+        root = tk.Tk()
+        root.withdraw()
+
+        conn = conectar_sql_server("DB_DATABASE")
+        if conn is None:
+            sys.exit("No se pudo conectar a la BD.")
+
+        liberar_radicados(root, conn)
+
         root.mainloop()
         sys.exit(0)
 
@@ -5365,6 +5579,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 ("Actualizar Datos",                        self.on_actualizar_datos),
                 ("Modificar Datos Capturados",              self.on_modificar_radicado),
                 ("Ver Progreso",                            self.on_ver_progreso),
+                ("Liberar Radicados",                      self.on_liberar_radicados),
                 ("Desactivar Usuario",                      self.on_modificar_estado_usuario),
                 ("Exportar Datos",                          self.on_exportar_paquete),
             ],
@@ -5685,6 +5900,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
             script,
             "--ver-progreso",
             str(self)          # <–– Aquí debe ir el user_id
+        ])
+        pass
+
+    def on_liberar_radicados(self):
+        import subprocess, os, sys
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([
+            sys.executable,
+            script,
+            "--liberar-radicados",
+            str(self.user_id)
         ])
         pass
 
