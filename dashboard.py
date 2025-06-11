@@ -3389,6 +3389,61 @@ def ver_progreso(root, conn):
         ctk.CTkLabel(frame2, text=str(total_general), font=("Arial", 12, "bold"))\
             .pack()
 
+        # --- Pestaña "Pendientes" ---
+        frame3 = tabs.tab("Pendientes")
+        for w in frame3.winfo_children():
+            w.destroy()
+
+        filtros_p = ["a.NUM_PAQUETE = %s"]
+        params_p = [pkg_sel]
+        tipo_p = var_tipo_paquete.get().strip()
+        if tipo_p:
+            filtros_p.append("a.TIPO_PAQUETE = %s")
+            params_p.append(tipo_p)
+
+        sel_usr_p = [u for u, v in user_vars.items() if v.get()]
+        if 0 < len(sel_usr_p) < len(usuarios):
+            ph = ", ".join("%s" for _ in sel_usr_p)
+            filtros_p.append(f"(u2.FIRST_NAME + ' ' + u2.LAST_NAME) IN ({ph})")
+            params_p.extend(sel_usr_p)
+
+        raw_p = rad_text.get("0.0", "end").strip()
+        if raw_p:
+            try:
+                lista_p = [int(r.strip()) for r in raw_p.splitlines() if r.strip()]
+            except ValueError:
+                messagebox.showwarning("Radicados inválidos", "Revisa la lista de radicados.")
+                return
+            if lista_p:
+                ph = ", ".join("%s" for _ in lista_p)
+                filtros_p.append(f"a.RADICADO IN ({ph})")
+                params_p.extend(lista_p)
+
+        filtros_p.append("a.STATUS_ID = 2")
+        where_p = " AND ".join(filtros_p)
+
+        cur_p = conn.cursor()
+        sql_p = (
+            "SELECT a.RADICADO, "
+            "       COALESCE(u2.FIRST_NAME + ' ' + u2.LAST_NAME, '') AS USUARIO "
+            "FROM ASIGNACION_TIPIFICACION a "
+            "LEFT JOIN USERS u2 ON a.USER_ASIGNED = u2.ID "
+            f"WHERE {where_p} "
+            "ORDER BY USUARIO, a.RADICADO"
+        )
+        cur_p.execute(sql_p, tuple(params_p))
+        rows_p = cur_p.fetchall()
+        cur_p.close()
+
+        headers_p = ["RADICADO", "USUARIO"]
+        for j, h in enumerate(headers_p):
+            ctk.CTkLabel(frame3, text=h, font=("Arial", 12, "bold"))\
+                .grid(row=0, column=j, padx=5, pady=4, sticky="w")
+        for i, row in enumerate(rows_p, start=1):
+            for j, val in enumerate(row):
+                ctk.CTkLabel(frame3, text=str(val))\
+                    .grid(row=i, column=j, padx=5, pady=2, sticky="w")
+
 
 
         
@@ -3742,6 +3797,7 @@ def ver_progreso(root, conn):
     tabs.pack(padx=20, pady=(10,20), fill="both", expand=True)
     tabs.add("Por Estado")
     tabs.add("Por Usuario")
+    tabs.add("Pendientes")
     win._tabview = tabs
 
     # Carga inicial al abrir ventana
