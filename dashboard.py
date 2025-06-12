@@ -5221,7 +5221,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # Aplicas tu shadow y layout como antes
         shadow = QGraphicsDropShadowEffect(self.panel)
         shadow.setBlurRadius(20)
-        shadow.setOffset(0, 4)
+        shadow.setOffset(0, 0)
         shadow.setColor(QtGui.QColor(0, 0, 0, 160))
         self.panel.setGraphicsEffect(shadow)
 
