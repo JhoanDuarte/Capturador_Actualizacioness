@@ -4601,16 +4601,20 @@ if "--crear-usuario" in sys.argv:
                         return messagebox.showinfo("Sin datos", "No se encontraron usuarios válidos")
 
                     creados = 0
-                    repetidos = 0
+                    duplicados = []
                     for first, last, num in usuarios:
                         try:
                             _insertar_usuario(first, last, num)
                             creados += 1
                         except ValueError:
-                            repetidos += 1
+                            duplicados.append(num)
                         except Exception:
                             continue
-                    messagebox.showinfo("Importación", f"Usuarios creados: {creados}\nRepetidos: {repetidos}")
+                    msg = f"Usuarios creados: {creados}\nNo guardados: {len(duplicados)}"
+                    if duplicados:
+                        doc_list = ", ".join(str(d) for d in duplicados)
+                        msg += f"\nDuplicados: {doc_list}"
+                    messagebox.showinfo("Importación", msg)
 
                 btn_save = ctk.CTkButton(frm1, text="Guardar Usuario", command=guardar_usuario, width=200)
                 btn_save.grid(row=len(labels_ind)+1, column=0, columnspan=2, pady=(20,5))
