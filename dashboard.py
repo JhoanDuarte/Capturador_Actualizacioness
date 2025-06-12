@@ -4512,10 +4512,14 @@ if "--crear-usuario" in sys.argv:
                 def _insertar_usuario(first, last, num_doc, email_addr=""):
                     type_id = tipo_map[tipo_var.get()]
                     cur_i = self.conn.cursor()
-                    cur_i.execute("SELECT COUNT(*) FROM USERS WHERE TYPE_DOC_ID=%s AND NUM_DOC=%s", (type_id, num_doc))
-                    if cur_i.fetchone()[0] > 0:
+                    cur_i.execute("SELECT TYPE_DOC_ID FROM USERS WHERE NUM_DOC=%s", (num_doc,))
+                    row = cur_i.fetchone()
+                    if row is not None:
                         cur_i.close()
-                        raise ValueError("dup")
+                        if row[0] == type_id:
+                            raise ValueError("dup_same")
+                        else:
+                            raise ValueError("dup_diff")
                     raw_pwd = pwd_var.get().strip()
                     pwd_bytes = raw_pwd.encode('utf-8')
                     salt = bcrypt.gensalt(rounds=12)
@@ -4548,11 +4552,25 @@ if "--crear-usuario" in sys.argv:
                     if not any(v.get() for v in rol_vars.values()):
                         return messagebox.showwarning("Faltan roles", "Debe seleccionar al menos un rol para el usuario.")
                     try:
-                        new_id = _insertar_usuario(fn_var.get().strip(), ln_var.get().strip(), int(doc_var.get().strip()), email_var.get().strip())
+                        new_id = _insertar_usuario(
+                            fn_var.get().strip(),
+                            ln_var.get().strip(),
+                            int(doc_var.get().strip()),
+                            email_var.get().strip(),
+                        )
                         messagebox.showinfo("Éxito", f"Usuario creado con ID {new_id}")
                         top.destroy()
-                    except ValueError:
-                        messagebox.showerror("Duplicado", "Ya existe un usuario con ese tipo y número de documento.")
+                    except ValueError as e:
+                        if str(e) == "dup_diff":
+                            messagebox.showerror(
+                                "Documento en uso",
+                                "Ya existe un usuario con ese número de documento registrado con otro tipo.",
+                            )
+                        else:
+                            messagebox.showerror(
+                                "Duplicado",
+                                "Ya existe un usuario con ese tipo y número de documento.",
+                            )
                     except Exception as e:
                         messagebox.showerror("Error", str(e))
 
@@ -4583,16 +4601,20 @@ if "--crear-usuario" in sys.argv:
                         return messagebox.showinfo("Sin datos", "No se encontraron usuarios válidos")
 
                     creados = 0
-                    repetidos = 0
+                    duplicados = []
                     for first, last, num in usuarios:
                         try:
                             _insertar_usuario(first, last, num)
                             creados += 1
                         except ValueError:
-                            repetidos += 1
+                            duplicados.append(num)
                         except Exception:
                             continue
-                    messagebox.showinfo("Importación", f"Usuarios creados: {creados}\nRepetidos: {repetidos}")
+                    msg = f"Usuarios creados: {creados}\nNo guardados: {len(duplicados)}"
+                    if duplicados:
+                        doc_list = ", ".join(str(d) for d in duplicados)
+                        msg += f"\nDuplicados: {doc_list}"
+                    messagebox.showinfo("Importación", msg)
 
                 btn_save = ctk.CTkButton(frm1, text="Guardar Usuario", command=guardar_usuario, width=200)
                 btn_save.grid(row=len(labels_ind)+1, column=0, columnspan=2, pady=(20,5))
