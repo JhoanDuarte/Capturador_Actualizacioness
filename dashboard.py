@@ -5069,16 +5069,16 @@ class BlurFrame(QtWidgets.QFrame):
 
         # 3) Asegurarnos de no pasarnos de los límites del pixmap completo
         full_pixmap = self.bg_blur
-        x0_clamped = max(0, min(x0, full_pixmap.width()))
-        y0_clamped = max(0, min(y0, full_pixmap.height()))
-        w_clamped = min(w, full_pixmap.width() - x0_clamped)
-        h_clamped = min(h, full_pixmap.height() - y0_clamped)
+        source_rect = QtCore.QRect(x0, y0, w, h).intersected(full_pixmap.rect())
 
-        if w_clamped > 0 and h_clamped > 0:
-            # 4) Extraer el sub-pixmap (región borrosa) correspondiente al frame
-            cropped = full_pixmap.copy(x0_clamped, y0_clamped, w_clamped, h_clamped)
-            # 5) Dibujar ese sub-pixmap en (0, 0) de este frame
-            painter.drawPixmap(0, 0, w_clamped, h_clamped, cropped)
+        if not source_rect.isNull():
+            target_rect = QtCore.QRect(
+                source_rect.x() - x0,
+                source_rect.y() - y0,
+                source_rect.width(),
+                source_rect.height(),
+            )
+            painter.drawPixmap(target_rect, full_pixmap, source_rect)
 
         # 6) Dibujar overlay semitransparente (negro con alpha)
         painter.fillPath(path, self.overlay_color)
