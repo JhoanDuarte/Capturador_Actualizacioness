@@ -3395,13 +3395,16 @@ def ver_progreso(root, conn):
 
 
         
-    def exportar_excel(path, headers, rows):
+    def exportar_excel(path, headers, rows, resumen_df=None):
+        """Exporta a Excel aplicando formato y opcionalmente una hoja de resumen."""
         # 1) Crear DataFrame
         df = pd.DataFrame(rows, columns=headers)
 
         # 2) Escribir con XlsxWriter
         with pd.ExcelWriter(path, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='Datos')
+            if resumen_df is not None:
+                resumen_df.to_excel(writer, index=False, sheet_name='Resumen')
             workbook  = writer.book
             worksheet = writer.sheets['Datos']
 
@@ -3422,18 +3425,27 @@ def ver_progreso(root, conn):
 
             # 4) Ajustar anchos y aplicar formatos
             for col_num, column in enumerate(df.columns):
-                # ancho automático basado en contenido
                 max_len = max(
                     df[column].astype(str).map(len).max(),
                     len(column)
                 ) + 2
-                # set_column aplica data_fmt a todas las celdas de la columna
                 worksheet.set_column(col_num, col_num, max_len, data_fmt)
-                # reescribimos el encabezado con header_fmt
                 worksheet.write(0, col_num, column, header_fmt)
+
+            if resumen_df is not None:
+                sheet2 = writer.sheets['Resumen']
+                for col_num, column in enumerate(resumen_df.columns):
+                    max_len = max(
+                        resumen_df[column].astype(str).map(len).max(),
+                        len(column)
+                    ) + 2
+                    sheet2.set_column(col_num, col_num, max_len, data_fmt)
+                    sheet2.write(0, col_num, column, header_fmt)
 
             # 5) (Opcional) Filtros automáticos
             worksheet.autofilter(0, 0, len(df), len(df.columns)-1)
+            if resumen_df is not None:
+                sheet2.autofilter(0, 0, len(resumen_df), len(resumen_df.columns)-1)
 
             
     def exportar():
@@ -3516,11 +3528,11 @@ def ver_progreso(root, conn):
         path = filedialog.asksaveasfilename(
             title="Guardar archivo",
             initialfile="reporte",
-            defaultextension=".csv",
+            defaultextension=".xlsx",
             filetypes=[
+                ("Excel con estilo", "*.xlsx"),
                 ("CSV (texto)", "*.csv"),
                 ("TXT (texto)", "*.txt"),
-                ("Excel con estilo", "*.xlsx"),
                 ("PDF", "*.pdf"),
             ],
         )
@@ -3541,6 +3553,33 @@ def ver_progreso(root, conn):
         headers = [rename_map.get(h, h) for h in headers]
         cur.close()
 
+        # --- Cálculo de campos digitados y resumen por funcionario ---
+        df = pd.DataFrame(rows, columns=headers)
+
+        # Columnas que intervienen para deduplicar registros de un radicado
+        dup_keys = [c for c in ['RADICADO', 'FECHA_SERVICIO', 'FECHA_SERVICIO_FINAL',
+                               'TipoDocumento', 'NumeroDocumento'] if c in df.columns]
+
+        # Columnas a contar (campos digitados)
+        count_cols = [c for c in df.columns
+                      if c not in ['OBSERVACION', 'RADICADO', 'NUM_PAQUETE',
+                                   'TIPO_PAQUETE', 'ESTADO', 'FECHA DE DIGITACION',
+                                   'DOCUMENTO FUNCIONARIO', 'FUNCIONARIO']]
+
+        def _count(row):
+            return sum(bool(str(row[c]).strip()) for c in count_cols if pd.notna(row[c]))
+
+        df['CAMPOS DIGITADOS'] = df.apply(_count, axis=1)
+
+        dedup_df = df.drop_duplicates(subset=dup_keys)
+        resumen_df = (dedup_df.groupby('FUNCIONARIO')['CAMPOS DIGITADOS']
+                                .sum()
+                                .reset_index()
+                                .rename(columns={'CAMPOS DIGITADOS': 'TOTAL CAMPOS'}))
+
+        rows = df.values.tolist()
+        headers = df.columns.tolist()
+
         # 4) Exportar según extensión
         if ext in ("csv", "txt"):
             sep = ',' if ext == "csv" else '\t'
@@ -3551,7 +3590,7 @@ def ver_progreso(root, conn):
             messagebox.showinfo("Exportar", f"{len(rows)} filas exportadas en {ext.upper()}:\n{path}")
 
         elif ext == "xlsx":
-            exportar_excel(path, headers, rows)
+            exportar_excel(path, headers, rows, resumen_df)
             messagebox.showinfo("Exportar", f"{len(rows)} filas exportadas en Excel:\n{path}")
 
         elif ext == "pdf":
