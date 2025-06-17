@@ -3498,9 +3498,8 @@ def ver_progreso(root, conn):
         select_cols.append("COALESCE(s.NAME, '') AS ESTADO")
         # Campos comunes al final
         select_cols.append("t.fecha_creacion AS FechaDigitacion")
-        select_cols.append(
-            "CONCAT(u.FIRST_NAME, ' ', u.LAST_NAME, ' - ', CAST(u.NUM_DOC AS varchar(20))) AS Funcionario"
-        )
+        select_cols.append("u.NUM_DOC AS NumDocumentoFuncionario")
+        select_cols.append("u.FIRST_NAME + ' ' + u.LAST_NAME AS NombreFuncionario")
 
         sql_export = (
             "SELECT " + ", ".join(select_cols) + " "
@@ -3536,7 +3535,8 @@ def ver_progreso(root, conn):
         headers = [col[0] for col in cur.description]
         rename_map = {
             "FechaDigitacion": "FECHA DE DIGITACION",
-            "Funcionario": "FUNCIONARIO",
+            "NumDocumentoFuncionario": "DOCUMENTO FUNCIONARIO",
+            "NombreFuncionario": "FUNCIONARIO",
         }
         headers = [rename_map.get(h, h) for h in headers]
         cur.close()
@@ -4190,7 +4190,8 @@ def exportar_paquete(root, conn):
         if "OBSERVACION" in campos_set:
             select_cols.append("d.OBSERVACION")
         select_cols.append("t.fecha_creacion AS FechaDigitacion")
-        select_cols.append("u2.NUM_DOC AS Funcionario")
+        select_cols.append("u2.NUM_DOC AS NumDocumentoFuncionario")
+        select_cols.append("u2.FIRST_NAME + ' ' + u2.LAST_NAME AS NombreFuncionario")
 
         base_sql = (
             "SELECT " + ", ".join(select_cols) + " "
@@ -4219,7 +4220,8 @@ def exportar_paquete(root, conn):
         headers = [col[0] for col in cur2.description]
         rename_map = {
             "FechaDigitacion": "FECHA DE DIGITACION",
-            "Funcionario": "FUNCIONARIO",
+            "NumDocumentoFuncionario": "DOCUMENTO FUNCIONARIO",
+            "NombreFuncionario": "FUNCIONARIO",
         }
         headers = [rename_map.get(h, h) for h in headers]
         cur2.close()
