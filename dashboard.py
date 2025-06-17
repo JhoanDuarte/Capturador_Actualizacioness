@@ -3069,7 +3069,15 @@ def iniciar_calidad(parent_root, conn, current_user_id):
     for b in (btn_save, btn_add, btn_del, btn_exit):
         b.bind("<Return>", lambda e, btn=b: btn.invoke())
         
-def ver_progreso(root, conn):
+def ver_progreso(root, conn, current_user_id, role_id):
+    # Determinar si el rol actual es administrador
+    cur_role = conn.cursor()
+    cur_role.execute("SELECT NAME FROM ROL WHERE ID = %s", (role_id,))
+    row = cur_role.fetchone()
+    cur_role.close()
+    role_name = row[0] if row else ""
+    is_admin = "ADMIN" in role_name.upper()
+
     # — Auxiliar para parsear fechas de texto —
     def parse_fecha(s):
         try:
@@ -3110,7 +3118,7 @@ def ver_progreso(root, conn):
             params.extend(sel_est)
 
         sel_usr = [u for u, v in user_vars.items() if v.get()]
-        if 0 < len(sel_usr) < len(usuarios):
+        if (not is_admin) or (0 < len(sel_usr) < len(usuarios)):
             ph = ", ".join("%s" for _ in sel_usr)
             filtros.append(f"(u.FIRST_NAME + ' ' + u.LAST_NAME) IN ({ph})")
             params.extend(sel_usr)
@@ -3836,19 +3844,28 @@ def ver_progreso(root, conn):
 
     # Filtro de usuarios
     cur = conn.cursor()
-    cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
+    if is_admin:
+        cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS ORDER BY FIRST_NAME")
+    else:
+        cur.execute("SELECT FIRST_NAME + ' ' + LAST_NAME FROM USERS WHERE ID = %s", (current_user_id,))
     usuarios = [r[0] for r in cur.fetchall()]
     cur.close()
+
     ctk.CTkLabel(sidebar, text="Usuario:").grid(row=13, column=0, sticky="w", pady=(10,5))
-    buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
-    buscar_usr.grid(row=13, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
-    buscar_usr.bind("<KeyRelease>", _filtrar_usr)
-    ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=14, column=0, sticky="w")
-    ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=80).grid(row=14, column=1)
-    ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=14, column=2, sticky="e")
+
+    if is_admin:
+        buscar_usr = ctk.CTkEntry(sidebar, width=180, placeholder_text="Buscar usuario...")
+        buscar_usr.grid(row=13, column=1, columnspan=2, sticky="w", padx=(0,10), pady=(10,5))
+        buscar_usr.bind("<KeyRelease>", _filtrar_usr)
+        ctk.CTkButton(sidebar, text="Todo", command=lambda: _marcar_usr(True), width=60).grid(row=14, column=0, sticky="w")
+        ctk.CTkButton(sidebar, text="Solo visibles", command=_solo_visibles_usr, width=80).grid(row=14, column=1)
+        ctk.CTkButton(sidebar, text="Ninguno", command=lambda: _marcar_usr(False), width=60).grid(row=14, column=2, sticky="e")
+        row_users = 15
+    else:
+        row_users = 14
 
     user_frame = ctk.CTkScrollableFrame(sidebar, width=280, height=120)
-    user_frame.grid(row=15, column=0, columnspan=3, sticky="w")
+    user_frame.grid(row=row_users, column=0, columnspan=3, sticky="w")
     user_vars = {}
     user_checks = {}
     for usr in usuarios:
@@ -3859,9 +3876,10 @@ def ver_progreso(root, conn):
         user_checks[usr] = cb
         
 
-    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=16, column=0, sticky="nw", pady=(10,0))
+    row_rad = row_users + 1
+    ctk.CTkLabel(sidebar, text="Radicados (uno por línea):").grid(row=row_rad, column=0, sticky="nw", pady=(10,0))
     rad_text = ctk.CTkTextbox(sidebar, width=240, height=100)
-    rad_text.grid(row=16, column=1, columnspan=2, sticky="w", pady=(10,0))
+    rad_text.grid(row=row_rad, column=1, columnspan=2, sticky="w", pady=(10,0))
 
     rad_text.bind("<KeyRelease>", lambda e: actualizar_tabs())
 
@@ -4851,11 +4869,16 @@ if "--ver-progreso" in sys.argv:
         if conn is None:
             sys.exit("No se pudo conectar a la BD.")
 
-        # 3) extrae el user_id que viene justo después del flag
+        # 3) extrae user_id y rol_id que vienen justo después del flag
         idx = sys.argv.index("--ver-progreso")
+        try:
+            user_id = int(sys.argv[idx + 1])
+            role_id = int(sys.argv[idx + 2])
+        except Exception:
+            sys.exit("Faltan parámetros para --ver-progreso")
 
         # 4) llama a tu función
-        ver_progreso(root, conn)
+        ver_progreso(root, conn, user_id, role_id)
 
         # 5) arranca el loop de Tk para CustomTkinter
         root.mainloop()
@@ -5958,11 +5981,13 @@ class DashboardWindow(QtWidgets.QMainWindow):
     def on_ver_progreso(self):
         import subprocess, os, sys
         script = os.path.abspath(sys.argv[0])
+        role_id = self.role_map.get(self.cmb_role.currentText())
         subprocess.Popen([
             sys.executable,
             script,
             "--ver-progreso",
-            str(self)          # <–– Aquí debe ir el user_id
+            str(self.user_id),
+            str(role_id if role_id is not None else "")
         ])
         pass
 
