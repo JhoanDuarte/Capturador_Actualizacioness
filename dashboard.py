@@ -727,6 +727,8 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
             d = datetime.datetime.strptime(txt, '%d/%m/%Y').date()
             if d > datetime.date.today():
                 raise ValueError("Fecha futura")
+            if d.year < 2000 or d.year > 2025:
+                raise ValueError("Fecha invalida")
             entry_fecha.configure(border_color='#2b2b2b', border_width=1)
             lbl_err_fecha.configure(text='')
             return True
