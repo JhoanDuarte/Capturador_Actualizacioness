@@ -1089,12 +1089,12 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
 
             elif campo == 'CODIGO_SERVICIO':
                 def only_alphanum(P):
-                    return P == "" or P.isalnum()
+                    return P == "" or re.fullmatch(r"[A-Za-z0-9-]*", P) is not None
                 vcmd_cs = (win.register(only_alphanum), '%P')
 
                 def to_upper_and_filter(*args, var=var):
                     txt = var.get()
-                    filtered = ''.join(ch for ch in txt if ch.isalnum()).upper()
+                    filtered = ''.join(ch for ch in txt if ch.isalnum() or ch == '-').upper()
                     if txt != filtered:
                         var.set(filtered)
                 var.trace_add('write', to_upper_and_filter)
@@ -2637,12 +2637,12 @@ def iniciar_calidad(parent_root, conn, current_user_id):
 
             elif campo == 'CODIGO_SERVICIO':
                 def only_alphanum(P):
-                    return P == "" or P.isalnum()
+                    return P == "" or re.fullmatch(r"[A-Za-z0-9-]*", P) is not None
                 vcmd_cs = (win.register(only_alphanum), '%P')
 
                 def to_upper_and_filter(*args, var=var):
                     txt = var.get()
-                    filtered = ''.join(ch for ch in txt if ch.isalnum()).upper()
+                    filtered = ''.join(ch for ch in txt if ch.isalnum() or ch == '-').upper()
                     if txt != filtered:
                         var.set(filtered)
                 var.trace_add('write', to_upper_and_filter)
