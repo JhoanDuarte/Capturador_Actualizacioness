@@ -5259,7 +5259,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
             
         # Configuración de la ventana
         self.setWindowTitle("Dashboard · Capturador De Datos")
-        self.resize(900, 900)
+        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        win_w = int(max(720, min(1600, screen.width() * 0.9)))
+        win_h = int(max(540, min(1200, screen.height() * 0.9)))
+        self.resize(win_w, win_h)
         self.center_on_screen()
             
         pix = QtGui.QPixmap(bg_path).scaled(
@@ -5325,6 +5328,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         v_layout.addStretch()
         v_layout.addWidget(self.panel, alignment=QtCore.Qt.AlignCenter)
         v_layout.addStretch()
+        self._update_panel_size()
 
         # ——————————————————————————————
         # 3) Encabezado con saludo
@@ -5620,7 +5624,16 @@ class DashboardWindow(QtWidgets.QMainWindow):
     def _on_resize(self, event):
         """Reposiciona el botón de tema al cambiar tamaño."""
         self.theme_btn.move(self.width() - 60, self.height() - 60)
+        if hasattr(self, "panel"):
+            self._update_panel_size()
         return super().resizeEvent(event)
+
+    def _update_panel_size(self):
+        """Ajusta el tamaño del panel según el de la ventana."""
+        win_w, win_h = self.width(), self.height()
+        panel_w = int(max(600, min(win_w * 0.7, 1000)))
+        panel_h = int(max(400, min(win_h * 0.8, 800)))
+        self.panel.setFixedSize(panel_w, panel_h)
 
     def center_on_screen(self):
         """Centra la ventana en la pantalla."""
