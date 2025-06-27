@@ -206,12 +206,19 @@ class LoginWindow(QtWidgets.QWidget):
 
         # y fija el icono del botón
         self.setWindowTitle("Login - Capturador De Datos")
-        self.resize(700, 800)
+        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        win_w = min(700, int(screen.width() * 0.8))
+        win_h = min(800, int(screen.height() * 0.9))
+        self.resize(win_w, win_h)
         self.center_on_screen()
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
-        self.setFixedSize(self.width(), self.height())
-        
-        self.panel_rect = QtCore.QRect(160, 150, 400, 500)
+        self.setFixedSize(win_w, win_h)
+
+        panel_w = int(win_w * 0.57)
+        panel_h = int(win_h * 0.62)
+        x = (win_w - panel_w) // 2
+        y = (win_h - panel_h) // 2
+        self.panel_rect = QtCore.QRect(x, y, panel_w, panel_h)
 
         # Cargamos la imagen de fondo completa
         bg_path = os.path.join(os.path.dirname(__file__), "Fondo.png")
@@ -607,15 +614,17 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
 
         # — Configuración básica de la ventana —
         self.setWindowTitle("Recuperar Contraseña")
-        self.resize(500, 400)
+        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        win_w = min(500, int(screen.width() * 0.7))
+        win_h = min(400, int(screen.height() * 0.7))
+        self.resize(win_w, win_h)
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
-        self.setFixedSize(self.width(), self.height())
+        self.setFixedSize(win_w, win_h)
 
-        # — Panel centrado de 400×(altura−60) —
-        panel_width  = 400
-        panel_height = self.height() - 160
-        x = (self.width() - panel_width) // 2
-        y = (self.height() - panel_height) // 2
+        panel_width  = int(win_w * 0.8)
+        panel_height = int(win_h * 0.6)
+        x = (win_w - panel_width) // 2
+        y = (win_h - panel_height) // 2
         self.panel_rect = QtCore.QRect(x, y, panel_width, panel_height)
         
         # — Fondos escalados con suavizado —
@@ -780,9 +789,12 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         win = QtWidgets.QWidget()
         win.login_window = self.login_window
         win.setWindowTitle("Verificar Código")
-        win.resize(500, 400)
+        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        win_w = min(500, int(screen.width() * 0.7))
+        win_h = min(400, int(screen.height() * 0.7))
+        win.resize(win_w, win_h)
         win.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
-        win.setFixedSize(win.width(), win.height())
+        win.setFixedSize(win_w, win_h)
 
         # — Cargamos y escalamos ambos fondos —
         bg_dark  = QtGui.QPixmap(resource_path("FondoLoginDark.png")).scaled(
@@ -801,7 +813,14 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         win.bg_label.setGeometry(win.rect())
 
         # Definimos geometría del panel
-        panel_rect = QtCore.QRect(50, 30, 400, win.height() - 60)
+        panel_w = int(win_w * 0.8)
+        panel_h = int(win_h * 0.6)
+        panel_rect = QtCore.QRect(
+            (win_w - panel_w) // 2,
+            (win_h - panel_h) // 2,
+            panel_w,
+            panel_h,
+        )
 
         # — Blur detrás del panel —
         blurred_bg = QtWidgets.QLabel(win)
@@ -897,9 +916,12 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         win = QtWidgets.QWidget()
         win.login_window = self.login_window
         win.setWindowTitle("Cambiar Contraseña")
-        win.resize(400, 300)
+        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        win_w = min(400, int(screen.width() * 0.6))
+        win_h = min(300, int(screen.height() * 0.6))
+        win.resize(win_w, win_h)
         win.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
-        win.setFixedSize(win.width(), win.height())
+        win.setFixedSize(win_w, win_h)
 
         # — Fondos según tema —
         bg_dark  = QtGui.QPixmap(resource_path("FondoLoginDark.png")).scaled(
@@ -913,7 +935,14 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         win.bg_label.setGeometry(win.rect())
 
         # Panel
-        panel_rect = QtCore.QRect(50, 30, 300, 240)
+        panel_w = int(win_w * 0.75)
+        panel_h = int(win_h * 0.8)
+        panel_rect = QtCore.QRect(
+            (win_w - panel_w) // 2,
+            (win_h - panel_h) // 2,
+            panel_w,
+            panel_h,
+        )
         blurred_bg = QtWidgets.QLabel(win)
         base_pix = bg_dark if self.login_window.is_dark else bg_light
         crop = base_pix.copy(panel_rect)
