@@ -5260,8 +5260,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
         # Configuración de la ventana
         self.setWindowTitle("Dashboard · Capturador De Datos")
         screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        win_w = min(900, int(screen.width() * 0.9))
-        win_h = min(900, int(screen.height() * 0.9))
+        win_w = int(max(720, min(1600, screen.width() * 0.9)))
+        win_h = int(max(540, min(1200, screen.height() * 0.9)))
         self.resize(win_w, win_h)
         self.center_on_screen()
             

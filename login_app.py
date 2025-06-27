@@ -207,8 +207,8 @@ class LoginWindow(QtWidgets.QWidget):
         # y fija el icono del botón
         self.setWindowTitle("Login - Capturador De Datos")
         screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        win_w = min(700, int(screen.width() * 0.8))
-        win_h = min(800, int(screen.height() * 0.9))
+        win_w = int(max(480, min(1200, screen.width() * 0.6)))
+        win_h = int(max(500, min(1000, screen.height() * 0.85)))
         self.resize(win_w, win_h)
         self.center_on_screen()
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
@@ -615,8 +615,8 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         # — Configuración básica de la ventana —
         self.setWindowTitle("Recuperar Contraseña")
         screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        win_w = min(500, int(screen.width() * 0.7))
-        win_h = min(400, int(screen.height() * 0.7))
+        win_w = int(max(420, min(800, screen.width() * 0.5)))
+        win_h = int(max(320, min(700, screen.height() * 0.6)))
         self.resize(win_w, win_h)
         self.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
         self.setFixedSize(win_w, win_h)
@@ -790,8 +790,8 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         win.login_window = self.login_window
         win.setWindowTitle("Verificar Código")
         screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        win_w = min(500, int(screen.width() * 0.7))
-        win_h = min(400, int(screen.height() * 0.7))
+        win_w = int(max(420, min(800, screen.width() * 0.5)))
+        win_h = int(max(320, min(700, screen.height() * 0.6)))
         win.resize(win_w, win_h)
         win.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
         win.setFixedSize(win_w, win_h)
@@ -917,8 +917,8 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         win.login_window = self.login_window
         win.setWindowTitle("Cambiar Contraseña")
         screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        win_w = min(400, int(screen.width() * 0.6))
-        win_h = min(300, int(screen.height() * 0.6))
+        win_w = int(max(380, min(700, screen.width() * 0.4)))
+        win_h = int(max(280, min(600, screen.height() * 0.5)))
         win.resize(win_w, win_h)
         win.setWindowFlag(QtCore.Qt.WindowMaximizeButtonHint, False)
         win.setFixedSize(win_w, win_h)
