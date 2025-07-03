@@ -5960,12 +5960,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
         
     def on_crear_usuario(self):
         import subprocess
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([sys.executable, script, "--crear-usuario"])
 
     def on_iniciar_digitacion(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -5976,7 +5976,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_iniciar_calidad(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -5987,7 +5987,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_ver_progreso(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         role_id = self.role_map.get(self.cmb_role.currentText())
         subprocess.Popen([
             sys.executable,
@@ -6000,7 +6000,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_liberar_radicados(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -6011,7 +6011,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_exportar_paquete(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -6022,7 +6022,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_actualizar_datos(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -6033,7 +6033,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_modificar_estado_usuario(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -6044,7 +6044,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
     
     def on_modificar_radicado(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
