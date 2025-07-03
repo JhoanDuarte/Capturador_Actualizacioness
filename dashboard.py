@@ -3607,7 +3607,8 @@ def ver_progreso(root, conn, current_user_id, role_id):
 
         if "RADICADO" in df.columns:
             df["CAMPOS DIGITADOS"] = (
-                df.groupby("RADICADO", group_keys=False).apply(compute_group_counts)
+                df.groupby("RADICADO", group_keys=False)
+                  .apply(compute_group_counts, include_groups=False)
             )
         else:
             df["CAMPOS DIGITADOS"] = compute_group_counts(df)
