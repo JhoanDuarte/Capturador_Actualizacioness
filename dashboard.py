@@ -33,6 +33,8 @@ import customtkinter as ctk  # sólo esto para CustomTkinter
 from PIL import Image
 import pandas as pd
 import requests
+
+session = requests.Session()
 import math
 from tkcalendar import DateEntry
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, PageBreak, Paragraph
@@ -69,7 +71,7 @@ def load_icon_from_url(url, size):
     if key in ICON_CACHE:
         return ICON_CACHE[key]
     try:
-        resp = requests.get(url, timeout=10)
+        resp = session.get(url, timeout=10)
         resp.raise_for_status()
         png_bytes = cairosvg.svg2png(bytestring=resp.content,
                                      output_width=size[0],
