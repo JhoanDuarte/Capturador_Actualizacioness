@@ -33,6 +33,8 @@ import customtkinter as ctk  # sólo esto para CustomTkinter
 from PIL import Image
 import pandas as pd
 import requests
+
+session = requests.Session()
 import math
 from tkcalendar import DateEntry
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, PageBreak, Paragraph
@@ -69,7 +71,7 @@ def load_icon_from_url(url, size):
     if key in ICON_CACHE:
         return ICON_CACHE[key]
     try:
-        resp = requests.get(url, timeout=10)
+        resp = session.get(url, timeout=10)
         resp.raise_for_status()
         png_bytes = cairosvg.svg2png(bytestring=resp.content,
                                      output_width=size[0],
@@ -5958,12 +5960,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
         
     def on_crear_usuario(self):
         import subprocess
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([sys.executable, script, "--crear-usuario"])
 
     def on_iniciar_digitacion(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -5974,7 +5976,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_iniciar_calidad(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -5985,7 +5987,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_ver_progreso(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         role_id = self.role_map.get(self.cmb_role.currentText())
         subprocess.Popen([
             sys.executable,
@@ -5998,7 +6000,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_liberar_radicados(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -6009,7 +6011,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_exportar_paquete(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -6020,7 +6022,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_actualizar_datos(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -6031,7 +6033,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def on_modificar_estado_usuario(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,
@@ -6042,7 +6044,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
     
     def on_modificar_radicado(self):
         import subprocess, os, sys
-        script = os.path.abspath(sys.argv[0])
+        script = resource_path("dashboard.py")
         subprocess.Popen([
             sys.executable,
             script,

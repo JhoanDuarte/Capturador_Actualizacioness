@@ -3,37 +3,29 @@ from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 import os
 import sys
-import subprocess
-from threading import Thread
-import time
 from tkinter import messagebox
-import customtkinter as ctk
 import bcrypt
 import smtplib
 import random
 import string
 import requests
+
+session = requests.Session()
 import tkinter as tk
-from tkinter import ttk
-from tqdm import tqdm
-from PyQt5.QtWidgets import QMessageBox,QGraphicsDropShadowEffect,QGraphicsBlurEffect
+from PyQt5.QtWidgets import QMessageBox, QGraphicsDropShadowEffect, QGraphicsBlurEffect
 from PyQt5.QtCore import QRegularExpression
-from PyQt5.QtGui  import QRegularExpressionValidator
-from PyQt5.QtGui import QIntValidator
+from PyQt5.QtGui import QRegularExpressionValidator, QIntValidator
 
 
 # — Librerías estándar —
 # (subprocess ya importado arriba si lo necesitas para llamadas externas)
 
+
 # — Librerías de PyQt5 —
-from PyQt5.QtGui import QIntValidator
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 # — Módulos propios —
 from db_connection import conectar_sql_server
-from dashboard import DashboardWindow
-
-from version import __version__ as local_version
 
 APP_NAME = "Dashboard_Capturador_Datos"
 UPDATE_JSON_URL = "https://raw.githubusercontent.com/JhoanDuarte/Capturador_Actualizacioness/main/latest.json"
@@ -42,12 +34,6 @@ try:
     from version import __version__ as local_version
 except ImportError:
     local_version = "1.3.3"  # Si no hay versión, se forzará la actualización
-
-import os
-import sys
-import requests
-import tkinter as tk
-from tkinter import messagebox
 
 def get_target_zip_path(version):
     # Misma lógica de antes
@@ -93,7 +79,7 @@ def show_update_required_window(zip_path, version):
 def check_for_update_and_exit_if_needed():
     try:
         # Descargamos el JSON de versiones
-        r = requests.get(UPDATE_JSON_URL, timeout=10)
+        r = session.get(UPDATE_JSON_URL, timeout=5)
         r.raise_for_status()
         data = r.json()
         remote_version = data.get("version")
@@ -105,7 +91,7 @@ def check_for_update_and_exit_if_needed():
 
             # Sólo descargar si no existe ya
             if not os.path.exists(zip_path):
-                r2 = requests.get(zip_url, timeout=30)
+                r2 = session.get(zip_url, timeout=30)
                 r2.raise_for_status()
                 os.makedirs(os.path.dirname(zip_path), exist_ok=True)
                 with open(zip_path, "wb") as f:
@@ -123,49 +109,42 @@ def check_for_update_and_exit_if_needed():
         os._exit(0)
 
 def run_dashboard_from_args():
-    # Si estamos en el exe congelado y el primer arg es dashboard.py
-    if getattr(sys, 'frozen', False) \
-       and len(sys.argv) >= 2 \
-       and os.path.basename(sys.argv[1]).lower() == "dashboard.py":
-        # argv[2], [3], [4] son user_id, first_name, last_name
+    """Permite lanzar el dashboard directamente desde la línea de comandos."""
+    if getattr(sys, "frozen", False) \
+        and len(sys.argv) >= 2 \
+        and os.path.basename(sys.argv[1]).lower() == "dashboard.py":
         try:
-            uid   = int(sys.argv[2])
-            fn    = sys.argv[3]
-            ln    = sys.argv[4]
+            uid = int(sys.argv[2])
+            fn = sys.argv[3]
+            ln = sys.argv[4]
         except Exception:
-            print("Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>")
+            print(
+                "Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>"
+            )
             sys.exit(1)
-        # Conectamos
-        conn = conectar_sql_server('DB_DATABASE')
-        if conn is None:
-            raise RuntimeError("No se pudo conectar a la BD.")
-        # Creamos root y abrimos el dashboard
-        def run_dashboard_from_args():
-            if getattr(sys, 'frozen', False) \
-            and len(sys.argv) >= 2 and os.path.basename(sys.argv[1]).lower() == "dashboard.py":
-                try:
-                    uid = int(sys.argv[2])
-                    fn  = sys.argv[3]
-                    ln  = sys.argv[4]
-                except Exception:
-                    print("Uso incorrecto: login_app.exe dashboard.py <id> <nombre> <apellido>")
-                    sys.exit(1)
 
-                # Arrancamos Qt en vez de CTk
-                app = QtWidgets.QApplication(sys.argv)
-                window = DashboardWindow(uid, fn, ln)   # sin parent=…
-                window.show()
-                sys.exit(app.exec_())
+        from dashboard import DashboardWindow
+
+        app = QtWidgets.QApplication(sys.argv)
+        window = DashboardWindow(uid, fn, ln)
+        window.show()
+        sys.exit(app.exec_())
 
 
 # Ejecutamos la detección *antes* de definir nada más
 run_dashboard_from_args()
 
 
-# Conexión a BD
-conn = conectar_sql_server('DB_DATABASE')
-if conn is None:
-    raise RuntimeError("No se pudo conectar a la base de datos.")
+# Conexión perezosa a la base de datos
+_conn = None
+
+def get_connection():
+    global _conn
+    if _conn is None:
+        _conn = conectar_sql_server('DB_DATABASE')
+        if _conn is None:
+            raise RuntimeError("No se pudo conectar a la base de datos.")
+    return _conn
 
 def resource_path(rel):
     # si estamos “frozen” (onefile), todo está en sys._MEIPASS
@@ -173,6 +152,7 @@ def resource_path(rel):
     return os.path.join(base, rel)
 
 def authenticate_user_by_doc(num_doc: str, password: str):
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT ID, FIRST_NAME, LAST_NAME, PASSWORD, STATUS_ID FROM USERS WHERE NUM_DOC = %s",
@@ -471,6 +451,7 @@ class LoginWindow(QtWidgets.QWidget):
         self.move(x, y)
 
     def on_login(self):
+        from dashboard import DashboardWindow
         num_doc = self.edit_doc.text().strip()
         pwd     = self.edit_pwd.text().strip()
 
@@ -767,6 +748,7 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "Datos faltantes", "Debe ingresar su documento.")
             return
 
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT CORREO FROM USERS WHERE NUM_DOC = %s", (num_doc,))
         row = cursor.fetchone()
@@ -1046,15 +1028,6 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         self.cambio_window.close()
         # Vuelve a mostrar el login
         self.login_window.show()
-def main():
-    # Inicializa tu ventana de Tkinter (o de Qt, según cómo lo tengas montado)
-    root = tk.Tk()
-    # Aquí podrías hacer cualquier setup adicional que ya tenías,
-    # por ejemplo:
-    dashboard = DashboardWindow(root)
-    # … configuración de layout, título, iconos, etc. …g
-    root.mainloop()
-
 if __name__ == "__main__":
     check_for_update_and_exit_if_needed()  # 👈 Esto va PRIMERO. Si no está actualizado, se sale.
     app = QtWidgets.QApplication(sys.argv)
