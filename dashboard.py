@@ -3569,19 +3569,48 @@ def ver_progreso(root, conn, current_user_id, role_id):
         df = pd.DataFrame(rows, columns=headers)
 
         # Columnas que intervienen para deduplicar registros de un radicado
-        dup_keys = [c for c in ['RADICADO', 'FECHA_SERVICIO', 'FECHA_SERVICIO_FINAL',
-                               'TipoDocumento', 'NumeroDocumento'] if c in df.columns]
+        dup_keys = [c for c in ['FUNCIONARIO', 'RADICADO'] if c in df.columns]
 
-        # Columnas a contar (campos digitados)
-        count_cols = [c for c in df.columns
-                      if c not in ['OBSERVACION', 'RADICADO', 'NUM_PAQUETE',
-                                   'TIPO_PAQUETE', 'ESTADO', 'FECHA DE DIGITACION',
-                                   'DOCUMENTO FUNCIONARIO', 'FUNCIONARIO']]
+        # Reglas de conteo de campos digitados por radicado
+        single_once = [
+            "FECHA_SERVICIO",
+            "DIAGNOSTICO",
+            "TipoDocumento",
+            "NumeroDocumento",
+        ]
 
-        def _count(row):
-            return sum(bool(str(row[c]).strip()) for c in count_cols if pd.notna(row[c]))
+        def compute_group_counts(group: pd.DataFrame) -> pd.Series:
+            def any_filled(col):
+                return group[col].apply(lambda v: pd.notna(v) and str(v).strip() != "").any()
 
-        df['CAMPOS DIGITADOS'] = df.apply(_count, axis=1)
+            count = 0
+            for col in single_once:
+                if col in group.columns and any_filled(col):
+                    count += 1
+
+            if "CM_COPAGO" in group.columns and group["CM_COPAGO"].apply(
+                lambda v: pd.notna(v) and str(v).strip() not in ("", "0")
+            ).any():
+                count += 1
+
+            multi_cols = [
+                "AUTORIZACION",
+                "CODIGO_SERVICIO",
+                "CANTIDAD",
+                "VLR_UNITARIO",
+            ]
+            for col in multi_cols:
+                if col in group.columns:
+                    count += group[col].apply(lambda v: pd.notna(v) and str(v).strip() != "").sum()
+
+            return pd.Series([count] * len(group), index=group.index)
+
+        if "RADICADO" in df.columns:
+            df["CAMPOS DIGITADOS"] = (
+                df.groupby("RADICADO", group_keys=False).apply(compute_group_counts)
+            )
+        else:
+            df["CAMPOS DIGITADOS"] = compute_group_counts(df)
 
         dedup_df = df.drop_duplicates(subset=dup_keys)
         resumen_df = (dedup_df.groupby('FUNCIONARIO')['CAMPOS DIGITADOS']
