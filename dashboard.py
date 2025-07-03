@@ -3569,8 +3569,7 @@ def ver_progreso(root, conn, current_user_id, role_id):
         df = pd.DataFrame(rows, columns=headers)
 
         # Columnas que intervienen para deduplicar registros de un radicado
-        dup_keys = [c for c in ['RADICADO', 'FECHA_SERVICIO', 'FECHA_SERVICIO_FINAL',
-                               'TipoDocumento', 'NumeroDocumento'] if c in df.columns]
+        dup_keys = [c for c in ['FUNCIONARIO', 'RADICADO'] if c in df.columns]
 
         # Reglas de conteo de campos digitados por radicado
         single_once = [
