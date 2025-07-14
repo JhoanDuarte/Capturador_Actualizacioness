@@ -5816,11 +5816,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
             return messagebox.showerror("Error lectura", "No se pudo leer el archivo.")
 
         # Normalize columns names
-        df.columns = [c.strip().upper().replace(" ","_") for c in df.columns]
-        required = {"RADICADO","NIT","RAZON_SOCIAL","FACTURA","VALOR_FACTURA",
-                    "FECHA_RADICACION","ESTADO_FACTURA","IMAGEN","RADICADO_IMAGEN",
-                    "LINEA","ID_ASIGNACION","ESTADO_PYS","OBSERVACION_PYS",
-                    "LINEA_PYS","RANGOS","DEF"}
+        df.columns = [str(c).strip().upper().replace(" ","_") for c in df.columns]
+
+        # Only a subset of columns is strictly required for the load
+        required = {"RADICADO", "NIT", "FACTURA"}
         faltan = required - set(df.columns)
         if faltan:
             return messagebox.showerror("Columnas faltantes", f"Faltan: {faltan}")
@@ -5876,31 +5875,33 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
         # 6) Construir filas de inserción
         rows = []
-        for _,r in df.iterrows():
-            rows.append((
-                safe_int(r['RADICADO']),
-                safe_int(r['NIT']),
-                safe_str(r['RAZON_SOCIAL'],255),
-                safe_str(r['FACTURA'],30),
-                safe_int(r['VALOR_FACTURA'],0),
-                None,                  # FECHA_FACTURA
-                safe_date(r['FECHA_RADICACION']),
-                None,                  # TIPO_DOC_ID
-                safe_int(r.get('NUM_DOC'), None),
-                safe_str(r['ESTADO_FACTURA'],255),
-                safe_str(r['IMAGEN'],2),
-                safe_str(r['RADICADO_IMAGEN'],255),
-                safe_str(r['LINEA'],255),
-                safe_str(r['ID_ASIGNACION'],255),
-                safe_str(r['ESTADO_PYS'],255),
-                safe_str(r['OBSERVACION_PYS'],255),
-                safe_str(r['LINEA_PYS'],255),
-                safe_str(r['RANGOS'],255),
-                safe_str(r['DEF'],255),
-                tipo,
-                1,
-                num_paquete
-            ))
+        for _, r in df.iterrows():
+            rows.append(
+                (
+                    safe_int(r["RADICADO"]),
+                    safe_int(r["NIT"]),
+                    safe_str(r.get("RAZON_SOCIAL"), 255),
+                    safe_str(r["FACTURA"], 30),
+                    safe_int(r.get("VALOR_FACTURA"), 0),
+                    None,  # FECHA_FACTURA
+                    safe_date(r.get("FECHA_RADICACION")),
+                    None,  # TIPO_DOC_ID
+                    safe_int(r.get("NUM_DOC"), None),
+                    safe_str(r.get("ESTADO_FACTURA"), 255),
+                    safe_str(r.get("IMAGEN"), 2),
+                    safe_str(r.get("RADICADO_IMAGEN"), 255),
+                    safe_str(r.get("LINEA"), 255),
+                    safe_str(r.get("ID_ASIGNACION"), 255),
+                    safe_str(r.get("ESTADO_PYS"), 255),
+                    safe_str(r.get("OBSERVACION_PYS"), 255),
+                    safe_str(r.get("LINEA_PYS"), 255),
+                    safe_str(r.get("RANGOS"), 255),
+                    safe_str(r.get("DEF"), 255),
+                    tipo,
+                    1,
+                    num_paquete,
+                )
+            )
 
         # 7) Insertar en BD con barra de progreso
         sql_insert = '''
