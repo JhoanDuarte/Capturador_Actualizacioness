@@ -1,14 +1,20 @@
 import glob
-from PyInstaller.utils.hooks import collect_all
 import os
+from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
+from PyQt5 import QtCore
 
 block_cipher = None
 
-# 1) Todas las DLL de GTK/Cairo
-gtk_bins = glob.glob(r'C:\Users\pysnepsdbs08\gtk3-runtime\bin\*.dll')
-gtk_bins.append(
-    r'C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\DLLs\unicodedata.pyd'
-)
+# Ruta base del proyecto
+BASE_DIR = Path(__file__).resolve().parent
+
+# 1) Todas las DLL de GTK/Cairo que se incluyen junto a la aplicación
+gtk_bins = glob.glob(str(BASE_DIR / 'gtk3-runtime' / 'bin' / '*.dll'))
+
+# Qt platform plugin (qwindows.dll)
+qwindows_dll = QtCore.QLibraryInfo.location(QtCore.QLibraryInfo.PluginsPath)
+qwindows_dll = os.path.join(qwindows_dll, 'platforms', 'qwindows.dll')
 
 # 2) Todo CustomTkinter (código + datos)
 ctk_datas, ctk_binaries, ctk_hidden = collect_all('customtkinter')
@@ -16,8 +22,8 @@ ctk_datas, ctk_binaries, ctk_hidden = collect_all('customtkinter')
 # Asegúrate de que las rutas a los archivos como `credentials.json` y `token.json` sean correctas
 a = Analysis(
     ['login_app.py'],
-    pathex=[],
-    binaries=[*( (path, '.') for path in gtk_bins ), *ctk_binaries],
+    pathex=[str(BASE_DIR)],
+    binaries=[*( (path, '.') for path in gtk_bins ), (qwindows_dll, 'platforms'), *ctk_binaries],
     datas=[
         ('.env', '.'),
         ('FondoLoginDark.png', '.'),
@@ -31,15 +37,13 @@ a = Analysis(
         ('FondoDashboardDark.png', '.'),
         ('FondoDashboardWhite.png', '.'),
         # Qt platform plugin
-        (r'C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\Lib\site-packages\PyQt5\Qt5\plugins\platforms\qwindows.dll', 'platforms'),
-        # Dashboard y logo
-        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\dashboard.py', '.'),
-        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\LogoImg_dark.png', '.'),
-        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\LogoImg_light.png', '.'),
-        # JSONS: Se copian al mismo directorio donde estará el EXE
-        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\latest.json', '.'),
-        # versionamiento
-        (r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\version.py', '.'),
+        (qwindows_dll, 'platforms'),
+        # Archivos de código y recursos adicionales
+        ('dashboard.py', '.'),
+        ('LogoImg_dark.png', '.'),
+        ('LogoImg_light.png', '.'),
+        ('latest.json', '.'),
+        ('version.py', '.'),
         *ctk_datas
     ],
     hiddenimports=[
@@ -70,7 +74,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    icon=r'C:\Users\pysnepsdbs08\Downloads\Capturador_Actualizaciones\Logo.ico'
+    icon=str(BASE_DIR / 'Logo.ico')
 )
 
 coll = COLLECT(
