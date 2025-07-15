@@ -1,4 +1,3 @@
-import glob
 import os
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
@@ -8,9 +7,6 @@ block_cipher = None
 
 # Ruta base del proyecto
 BASE_DIR = Path(__file__).resolve().parent
-
-# 1) Todas las DLL de GTK/Cairo que se incluyen junto a la aplicación
-gtk_bins = glob.glob(str(BASE_DIR / 'gtk3-runtime' / 'bin' / '*.dll'))
 
 # Qt platform plugin (qwindows.dll)
 qwindows_dll = QtCore.QLibraryInfo.location(QtCore.QLibraryInfo.PluginsPath)
@@ -23,7 +19,7 @@ ctk_datas, ctk_binaries, ctk_hidden = collect_all('customtkinter')
 a = Analysis(
     ['login_app.py'],
     pathex=[str(BASE_DIR)],
-    binaries=[*( (path, '.') for path in gtk_bins ), (qwindows_dll, 'platforms'), *ctk_binaries],
+    binaries=[(qwindows_dll, 'platforms'), *ctk_binaries],
     datas=[
         ('.env', '.'),
         ('FondoLoginDark.png', '.'),
