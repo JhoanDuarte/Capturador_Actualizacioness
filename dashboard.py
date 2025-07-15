@@ -3,16 +3,8 @@ import ssl
 import sys
 import csv
 
-# — Configuración de entorno para GTK/Cairo —
-# Ajusta PATH para cargar las DLL de GTK sin privilegios de administrador
-os.environ['PATH'] = (
-    r"C:\Users\pysnepsdbs08\gtk3-runtime\bin"
-    + os.pathsep + os.environ.get('PATH', '')
-)
-# Inserta ruta a site-packages para cargar la instalación correcta de Pandas y CairoSVG
-sys.path.insert(0,
-    r"C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\Lib\site-packages"
-)
+# Ruta base de la aplicación (compatible con ejecución congelada o directa)
+BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
 
 # — Librerías estándar —
 import datetime
@@ -20,7 +12,7 @@ import re
 import subprocess
 import tkinter as tk
 from io import BytesIO
-from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5 import QtWidgets, QtGui, QtCore, QtSvg
 from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem
 from PyQt5.QtGui import QPainter, QPainterPath, QImage, QRegion, QColor
 from PyQt5.QtCore import QRectF, QRect, QPoint
@@ -28,7 +20,6 @@ from tkinter import filedialog, messagebox, ttk
 
 # — Terceros —
 import bcrypt
-import cairosvg
 import customtkinter as ctk  # sólo esto para CustomTkinter
 from PIL import Image
 import pandas as pd
@@ -73,10 +64,17 @@ def load_icon_from_url(url, size):
     try:
         resp = session.get(url, timeout=10)
         resp.raise_for_status()
-        png_bytes = cairosvg.svg2png(bytestring=resp.content,
-                                     output_width=size[0],
-                                     output_height=size[1])
-        img = Image.open(BytesIO(png_bytes))
+        # Renderizamos el SVG con Qt para evitar depender de Cairo
+        renderer = QtSvg.QSvgRenderer(QtCore.QByteArray(resp.content))
+        image = QtGui.QImage(size[0], size[1], QtGui.QImage.Format_ARGB32)
+        image.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(image)
+        renderer.render(painter)
+        painter.end()
+        buffer = QtCore.QBuffer()
+        buffer.open(QtCore.QIODevice.ReadWrite)
+        image.save(buffer, 'PNG')
+        img = Image.open(BytesIO(buffer.data()))
     except Exception:
         img = Image.new("RGBA", size, (0, 0, 0, 0))
     icon = ctk.CTkImage(light_image=img, dark_image=img, size=size)
