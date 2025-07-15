@@ -4,15 +4,16 @@ import sys
 import csv
 
 # — Configuración de entorno para GTK/Cairo —
-# Ajusta PATH para cargar las DLL de GTK sin privilegios de administrador
-os.environ['PATH'] = (
-    r"C:\Users\pysnepsdbs08\gtk3-runtime\bin"
-    + os.pathsep + os.environ.get('PATH', '')
-)
-# Inserta ruta a site-packages para cargar la instalación correcta de Pandas y CairoSVG
-sys.path.insert(0,
-    r"C:\Users\pysnepsdbs08\AppData\Local\Programs\Python\Python313\Lib\site-packages"
-)
+# Ajustamos las rutas en función de la ubicación real de la aplicación
+BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
+
+gtk_dir = os.path.join(BASE_DIR, 'gtk3-runtime', 'bin')
+if os.path.isdir(gtk_dir):
+    os.environ['PATH'] = gtk_dir + os.pathsep + os.environ.get('PATH', '')
+
+site_packages = os.path.join(BASE_DIR, 'site-packages')
+if os.path.isdir(site_packages):
+    sys.path.insert(0, site_packages)
 
 # — Librerías estándar —
 import datetime
