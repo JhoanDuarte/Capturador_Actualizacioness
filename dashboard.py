@@ -1555,7 +1555,7 @@ def modificar_radicado(parent_root, conn, user_id):
     entry_factura_var  = tk.StringVar()
 
     var_fecha  = tk.StringVar()
-    var_fecha_final = tk.StringVar()
+    var_FECHA_SERVICIO_FINAL = tk.StringVar()
     var_tipo   = tk.StringVar()
     var_num    = tk.StringVar()
     var_diag   = tk.StringVar()
@@ -1618,7 +1618,7 @@ def modificar_radicado(parent_root, conn, user_id):
         cur.execute("SELECT campo FROM PAQUETE_CAMPOS WHERE num_paquete=%s", (num_pkg,))
         campos = {r[0] for r in cur.fetchall()}
 
-        # 3) Cabecera de tipificación (incluye fecha_final)
+        # 3) Cabecera de tipificación (incluye FECHA_SERVICIO_FINAL)
         cur.execute("""
             SELECT t.ID,
                    at.RADICADO, at.NIT, at.FACTURA,
@@ -1654,7 +1654,7 @@ def modificar_radicado(parent_root, conn, user_id):
             cab[4].strftime("%d/%m/%Y") if isinstance(cab[4], datetime.date) else ""
         )
         if is_calidad:
-            var_fecha_final.set(
+            var_FECHA_SERVICIO_FINAL.set(
                 cab[5].strftime("%d/%m/%Y") if isinstance(cab[5], datetime.date) else ""
             )
         var_tipo.set(str(cab[6] or ""))
@@ -1687,7 +1687,7 @@ def modificar_radicado(parent_root, conn, user_id):
         ]
         if is_calidad:
             MAIN_DEFS.append(
-                ("Fecha Servicio Final", var_fecha_final,  "FECHA_SERVICIO_FINAL", "date", None)
+                ("Fecha Servicio Final", var_FECHA_SERVICIO_FINAL,  "FECHA_SERVICIO_FINAL", "date", None)
             )
         MAIN_DEFS += [
             ("Tipo Documento",       var_tipo,         "TIPO_DOC_ID",          "autocomplete", tipo_doc_opts),
@@ -2304,11 +2304,11 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             'Fecha Servicio Final:',
             'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/calendar.svg'
         )
-        var_fecha_final = tk.StringVar()
+        var_FECHA_SERVICIO_FINAL = tk.StringVar()
 
-        entry_fecha_final = ctk.CTkEntry(
+        entry_FECHA_SERVICIO_FINAL = ctk.CTkEntry(
             frm_final,
-            textvariable=var_fecha_final,
+            textvariable=var_FECHA_SERVICIO_FINAL,
             placeholder_text='DD/MM/AAAA',
             width=300,
             fg_color=entry_fg_color,
@@ -2317,12 +2317,12 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             validate='key',
             validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
         )
-        entry_fecha_final.pack(fill='x', pady=(5, 0))
-        apply_focus_style(entry_fecha_final,scroll)
+        entry_FECHA_SERVICIO_FINAL.pack(fill='x', pady=(5, 0))
+        apply_focus_style(entry_FECHA_SERVICIO_FINAL,scroll)
 
         # Función de formateo para fecha final
-        def format_fecha_final(event):
-            txt = var_fecha_final.get()
+        def format_FECHA_SERVICIO_FINAL(event):
+            txt = var_FECHA_SERVICIO_FINAL.get()
             if event.keysym in ('BackSpace','Delete','Left','Right','Home','End'):
                 return
             digits = txt.replace('/', '')[:8]
@@ -2337,36 +2337,36 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             else:
                 parts.append(digits)
             new_text = '/'.join(parts)
-            var_fecha_final.set(new_text)
-            entry_fecha_final.icursor(len(new_text))
+            var_FECHA_SERVICIO_FINAL.set(new_text)
+            entry_FECHA_SERVICIO_FINAL.icursor(len(new_text))
 
         # Función de validación para fecha final
-        def val_fecha_final(e=None):
-            txt = var_fecha_final.get().strip()
+        def val_FECHA_SERVICIO_FINAL(e=None):
+            txt = var_FECHA_SERVICIO_FINAL.get().strip()
             try:
                 d = datetime.datetime.strptime(txt, '%d/%m/%Y').date()
                 if d > datetime.date.today():
                     raise ValueError("Fecha futura")
-                entry_fecha_final.configure(border_color='#2b2b2b', border_width=1)
-                lbl_err_fecha_final.configure(text='')
+                entry_FECHA_SERVICIO_FINAL.configure(border_color='#2b2b2b', border_width=1)
+                lbl_err_FECHA_SERVICIO_FINAL.configure(text='')
                 return True
             except Exception:
-                entry_fecha_final.configure(border_color='red', border_width=2)
-                lbl_err_fecha_final.configure(text='Fecha inválida')
+                entry_FECHA_SERVICIO_FINAL.configure(border_color='red', border_width=2)
+                lbl_err_FECHA_SERVICIO_FINAL.configure(text='Fecha inválida')
                 return False
 
-        lbl_err_fecha_final = ctk.CTkLabel(frm_final, text='', text_color='red')
-        lbl_err_fecha_final.pack(fill='x')
+        lbl_err_FECHA_SERVICIO_FINAL = ctk.CTkLabel(frm_final, text='', text_color='red')
+        lbl_err_FECHA_SERVICIO_FINAL.pack(fill='x')
 
         # Bindings idénticos a los de fecha_servicio
-        entry_fecha_final.bind("<Double-Button-1>", select_all)
-        entry_fecha_final.bind("<FocusIn>", select_all)
-        entry_fecha_final.bind("<Key>", clear_selection_on_key)
-        entry_fecha_final.bind("<KeyRelease>", format_fecha_final)
-        entry_fecha_final.bind("<FocusOut>", val_fecha_final)
+        entry_FECHA_SERVICIO_FINAL.bind("<Double-Button-1>", select_all)
+        entry_FECHA_SERVICIO_FINAL.bind("<FocusIn>", select_all)
+        entry_FECHA_SERVICIO_FINAL.bind("<Key>", clear_selection_on_key)
+        entry_FECHA_SERVICIO_FINAL.bind("<KeyRelease>", format_FECHA_SERVICIO_FINAL)
+        entry_FECHA_SERVICIO_FINAL.bind("<FocusOut>", val_FECHA_SERVICIO_FINAL)
 
-        field_vars['FECHA_SERVICIO_FINAL'] = var_fecha_final
-        widgets['FECHA_SERVICIO_FINAL']   = entry_fecha_final
+        field_vars['FECHA_SERVICIO_FINAL'] = var_FECHA_SERVICIO_FINAL
+        widgets['FECHA_SERVICIO_FINAL']   = entry_FECHA_SERVICIO_FINAL
 
         place_fixed_field(frm_final)
 
@@ -2888,8 +2888,8 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         num_doc_i = int(var_num.get().strip()) if 'NUM_DOC' in field_vars and var_num.get().strip() else None
         fecha_obj = (datetime.datetime.strptime(var_fecha.get().strip(), "%d/%m/%Y").date()
                     if 'FECHA_SERVICIO' in field_vars and var_fecha.get().strip() else None)
-        fecha_final_obj = (datetime.datetime.strptime(var_fecha_final.get().strip(), "%d/%m/%Y").date()
-                    if 'FECHA_SERVICIO_FINAL' in field_vars and var_fecha_final.get().strip() else None)
+        FECHA_SERVICIO_FINAL_obj = (datetime.datetime.strptime(var_FECHA_SERVICIO_FINAL.get().strip(), "%d/%m/%Y").date()
+                    if 'FECHA_SERVICIO_FINAL' in field_vars and var_FECHA_SERVICIO_FINAL.get().strip() else None)
         # TipoDoc
         if 'TIPO_DOC_ID' in field_vars and var_tipo.get().strip():
             nombre = var_tipo.get().strip().upper()
@@ -2915,7 +2915,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
             (ASIGNACION_ID, FECHA_SERVICIO, FECHA_SERVICIO_FINAL, TIPO_DOC_ID, NUM_DOC, DIAGNOSTICO, USER_ID)
             OUTPUT INSERTED.ID
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (asig_id, fecha_obj, fecha_final_obj, tipo_doc_id, num_doc_i, diag_code, current_user_id,))
+        """, (asig_id, fecha_obj, FECHA_SERVICIO_FINAL_obj, tipo_doc_id, num_doc_i, diag_code, current_user_id,))
         tip_id = cur2.fetchone()[0]
 
         # --- 3) Insertar detalles y detectar si hay observaciones ---
@@ -5960,7 +5960,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         sel2 = ctk.CTkToplevel(self._tk_root)
         sel2.title(f"Paquete {num_paquete}: Campos")
         campos = [
-            "FECHA_SERVICIO","FECHA_FINAL","TIPO_DOC_ID","NUM_DOC",
+            "FECHA_SERVICIO","FECHA_SERVICIO_FINAL","TIPO_DOC_ID","NUM_DOC",
             "DIAGNOSTICO","AUTORIZACION","CODIGO_SERVICIO",
             "CANTIDAD","VLR_UNITARIO","COPAGO","OBSERVACION"
         ]
@@ -5982,9 +5982,6 @@ class DashboardWindow(QtWidgets.QMainWindow):
         ctk.CTkButton(sel2, text="Guardar", command=guardar_campos).pack(pady=10)
         sel2.grab_set()
         self._tk_root.wait_window(sel2)
-
-
-
         
     def on_cargar_paquete(self):    
         self.cargar_paquete()

@@ -1,29 +1,35 @@
-import glob
-import os
+# -*- mode: python -*-
+import glob, os, sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_data_files
 from PyQt5 import QtCore
 
 block_cipher = None
+SPEC_PATH = Path(sys.argv[0]).resolve()
+BASE_DIR  = SPEC_PATH.parent
 
-# Ruta base del proyecto
-BASE_DIR = Path(__file__).resolve().parent
-
-# 1) Todas las DLL de GTK/Cairo que se incluyen junto a la aplicación
+# DLLs de GTK/Cairo
 gtk_bins = glob.glob(str(BASE_DIR / 'gtk3-runtime' / 'bin' / '*.dll'))
 
-# Qt platform plugin (qwindows.dll)
-qwindows_dll = QtCore.QLibraryInfo.location(QtCore.QLibraryInfo.PluginsPath)
-qwindows_dll = os.path.join(qwindows_dll, 'platforms', 'qwindows.dll')
+# Qt platform plugin
+qt_plugins = QtCore.QLibraryInfo.location(QtCore.QLibraryInfo.PluginsPath)
+qwindows_dll = os.path.join(qt_plugins, 'platforms', 'qwindows.dll')
 
-# 2) Todo CustomTkinter (código + datos)
+# CustomTkinter
 ctk_datas, ctk_binaries, ctk_hidden = collect_all('customtkinter')
 
-# Asegúrate de que las rutas a los archivos como `credentials.json` y `token.json` sean correctas
+# PyQt5 data (traducciones, plugins, etc)
+pyqt5_datas = collect_data_files('PyQt5')
+
 a = Analysis(
-    ['login_app.py'],
+    # Incluimos tus scripts principales
+    ['login_app.py', 'dashboard.py'],
     pathex=[str(BASE_DIR)],
-    binaries=[*( (path, '.') for path in gtk_bins ), (qwindows_dll, 'platforms'), *ctk_binaries],
+    binaries=[
+        *((path, '.') for path in gtk_bins),
+        (qwindows_dll, 'platforms'),
+        *ctk_binaries
+    ],
     datas=[
         ('.env', '.'),
         ('FondoLoginDark.png', '.'),
@@ -48,9 +54,11 @@ a = Analysis(
     ],
     hiddenimports=[
         'unicodedata',
-        'request',
         'io',
         'sip',
+        'PyQt5.QtCore',
+        'PyQt5.QtGui',
+        'PyQt5.QtWidgets',
         *ctk_hidden
     ],
     hookspath=[],
@@ -66,14 +74,14 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    [],
+    [],                 # nada aquí
     exclude_binaries=True,
     name='login_app',
-    debug=False,
+    debug=True,         # ← activa debug
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=True,       # ← muestra la consola para ver errores
     icon=str(BASE_DIR / 'Logo.ico')
 )
 
