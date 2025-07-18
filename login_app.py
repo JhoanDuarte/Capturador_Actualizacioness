@@ -37,78 +37,6 @@ try:
 except ImportError:
     local_version = "1.3.4"  # Si no hay versión, se forzará la actualización
 
-def get_target_zip_path(version):
-    # Misma lógica de antes
-    app_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
-    target_dir = os.path.abspath(os.path.join(app_dir, "..", ".."))
-    zip_name = f"{APP_NAME}_{version}.zip"
-    return os.path.join(target_dir, zip_name)
-
-def show_update_required_window(zip_path, version):
-    # Crea una ventana modal que no deja avanzar al login
-    window = tk.Tk()
-    window.title("Actualización requerida")
-    window.geometry("520x180")
-    window.resizable(False, False)
-
-    zip_name = os.path.basename(zip_path)
-    msg = (
-        f"Se ha descargado la actualización requerida.\n\n"
-        f"Versión: {version}\n"
-        f"Archivo: {zip_name}\n"
-        f"Ubicación: {os.path.dirname(zip_path)}"
-    )
-    tk.Label(window, text=msg, font=("Arial", 10), justify="left", wraplength=500).pack(pady=10)
-
-    def abrir_directorio():
-        # Abre el explorador y luego cierra la app
-        os.startfile(os.path.dirname(zip_path))
-        window.destroy()
-
-    tk.Button(
-        window,
-        text="Abrir carpeta de actualización",
-        command=abrir_directorio
-    ).pack(pady=10)
-
-    # Si cierra con la “X”, también sale toda la app
-    window.protocol("WM_DELETE_WINDOW", window.destroy)
-    window.mainloop()
-
-    # Al destruir la ventana, matamos el proceso para que no siga al login
-    os._exit(0)
-
-def check_for_update_and_exit_if_needed():
-    try:
-        # Descargamos el JSON de versiones
-        r = session.get(UPDATE_JSON_URL, timeout=5)
-        r.raise_for_status()
-        data = r.json()
-        remote_version = data.get("version")
-        zip_url = data.get("url")
-
-        # Si cambió la versión, forzamos descarga y bloqueo
-        if local_version != remote_version:
-            zip_path = get_target_zip_path(remote_version)
-
-            # Sólo descargar si no existe ya
-            if not os.path.exists(zip_path):
-                r2 = session.get(zip_url, timeout=30)
-                r2.raise_for_status()
-                os.makedirs(os.path.dirname(zip_path), exist_ok=True)
-                with open(zip_path, "wb") as f:
-                    f.write(r2.content)
-
-            # Muestra ventana y, al cerrarla o pulsar el botón, sale todo
-            show_update_required_window(zip_path, remote_version)
-
-        # Si la versión es la misma, simplemente retorna y deja continuar al login
-    except Exception as e:
-        # En caso de error al verificar actualización, avisa y no deja avanzar
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror("Error", f"No se pudo verificar la actualización:\n{e}")
-        os._exit(0)
 
 def run_dashboard_from_args():
     # Si estamos en el exe congelado y el primer arg es dashboard.py
@@ -1043,7 +971,6 @@ class RecuperarContrasenaWindow(QtWidgets.QWidget):
         # Vuelve a mostrar el login
         self.login_window.show()
 if __name__ == "__main__":
-    check_for_update_and_exit_if_needed()
     app = QtWidgets.QApplication(sys.argv)
     w = LoginWindow()
     w.show()
