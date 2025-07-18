@@ -1690,10 +1690,6 @@ def modificar_radicado(parent_root, conn, user_id):
         MAIN_DEFS = [
             ("Fecha Servicio",       var_fecha,        "FECHA_SERVICIO",       "date",         None),
         ]
-        if 'FECHA_FACTURA' in campos_paquete:
-            MAIN_DEFS.append(
-                ("Fecha Factura",       var_FECHA_FACTURA,  "FECHA_FACTURA", "date", None)
-            )
         if is_calidad:
             MAIN_DEFS.append(
                 ("Fecha Servicio Final", var_FECHA_SERVICIO_FINAL,  "FECHA_SERVICIO_FINAL", "date", None)
@@ -2310,74 +2306,6 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         place_fixed_field(frm)
 
     # ————— Bloque de creación del campo Fecha Factura —————
-    if 'FECHA_FACTURA' in campos_paquete:
-        frm_fact = make_field(
-            'Fecha Factura:',
-            'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/calendar.svg'
-        )
-        var_FECHA_FACTURA = tk.StringVar()
-
-        entry_FECHA_FACTURA = ctk.CTkEntry(
-            frm_fact,
-            textvariable=var_FECHA_FACTURA,
-            placeholder_text='DD/MM/AAAA',
-            width=300,
-            fg_color=entry_fg_color,
-            text_color=entry_text_color,
-            placeholder_text_color=placeholder_color,
-            validate='key',
-            validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
-        )
-        entry_FECHA_FACTURA.pack(fill='x', pady=(5, 0))
-        apply_focus_style(entry_FECHA_FACTURA,scroll)
-
-        def format_FECHA_FACTURA(event):
-            txt = var_FECHA_FACTURA.get()
-            if event.keysym in ('BackSpace','Delete','Left','Right','Home','End'):
-                return
-            digits = txt.replace('/', '')[:8]
-            parts = []
-            if len(digits) >= 2:
-                parts.append(digits[:2])
-                if len(digits) >= 4:
-                    parts.append(digits[2:4])
-                    parts.append(digits[4:])
-                else:
-                    parts.append(digits[2:])
-            else:
-                parts.append(digits)
-            new_text = '/'.join(parts)
-            var_FECHA_FACTURA.set(new_text)
-            entry_FECHA_FACTURA.icursor(len(new_text))
-
-        def val_FECHA_FACTURA(e=None):
-            txt = var_FECHA_FACTURA.get().strip()
-            try:
-                d = datetime.datetime.strptime(txt, '%d/%m/%Y').date()
-                if d > datetime.date.today():
-                    raise ValueError('Fecha futura')
-                entry_FECHA_FACTURA.configure(border_color='#2b2b2b', border_width=1)
-                lbl_err_FECHA_FACTURA.configure(text='')
-                return True
-            except Exception:
-                entry_FECHA_FACTURA.configure(border_color='red', border_width=2)
-                lbl_err_FECHA_FACTURA.configure(text='Fecha inválida')
-                return False
-
-        lbl_err_FECHA_FACTURA = ctk.CTkLabel(frm_fact, text='', text_color='red')
-        lbl_err_FECHA_FACTURA.pack(fill='x')
-
-        entry_FECHA_FACTURA.bind('<Double-Button-1>', select_all)
-        entry_FECHA_FACTURA.bind('<FocusIn>', select_all)
-        entry_FECHA_FACTURA.bind('<Key>', clear_selection_on_key)
-        entry_FECHA_FACTURA.bind('<KeyRelease>', format_FECHA_FACTURA)
-        entry_FECHA_FACTURA.bind('<FocusOut>', val_FECHA_FACTURA)
-
-        field_vars['FECHA_FACTURA'] = var_FECHA_FACTURA
-        widgets['FECHA_FACTURA']   = entry_FECHA_FACTURA
-
-        place_fixed_field(frm_fact)
-
     # ————— Bloque de creación del campo de fecha final —————
 # ————— Bloque de creación del campo de fecha final —————
 
