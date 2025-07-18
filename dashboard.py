@@ -1424,7 +1424,7 @@ def iniciar_tipificacion(parent_root, conn, current_user_id):
         # --- 5) Cerrar ventana y continuar/volver ---
         if final:
             # Desvincular eventos de fecha(s) existentes
-            for campo in ('FECHA_SERVICIO', 'FECHA_SERVICIO_FINAL'):
+            for campo in ('FECHA_SERVICIO', 'FECHA_SERVICIO_FINAL', 'FECHA_FACTURA'):
                 if campo in widgets:
                     widgets[campo].unbind("<KeyRelease>")
                     widgets[campo].unbind("<FocusOut>")
@@ -1556,6 +1556,7 @@ def modificar_radicado(parent_root, conn, user_id):
 
     var_fecha  = tk.StringVar()
     var_FECHA_SERVICIO_FINAL = tk.StringVar()
+    var_FECHA_FACTURA = tk.StringVar()
     var_tipo   = tk.StringVar()
     var_num    = tk.StringVar()
     var_diag   = tk.StringVar()
@@ -1621,7 +1622,7 @@ def modificar_radicado(parent_root, conn, user_id):
         # 3) Cabecera de tipificación (incluye FECHA_SERVICIO_FINAL)
         cur.execute("""
             SELECT t.ID,
-                   at.RADICADO, at.NIT, at.FACTURA,
+                   at.RADICADO, at.NIT, at.FACTURA, at.FECHA_FACTURA,
                    t.FECHA_SERVICIO, t.FECHA_SERVICIO_FINAL,
                    td.NAME         AS TIPO_DOC_NAME,
                    dx.CODIGO + ' - ' + dx.NOMBRE AS DIAG_NAME,
@@ -1633,7 +1634,7 @@ def modificar_radicado(parent_root, conn, user_id):
              WHERE t.ASIGNACION_ID = %s
                AND t.USER_ID       = %s
         """, (rad, user_id))
-        cab = cur.fetchone() or [None]*9
+        cab = cur.fetchone() or [None]*10
         tipif_id = cab[0]
 
         # 4) DETALLES: **todos** los servicios
@@ -1650,17 +1651,21 @@ def modificar_radicado(parent_root, conn, user_id):
         entry_radicado_var.set(str(cab[1] or rad))
         entry_nit_var.set(str(cab[2] or ""))
         entry_factura_var.set(str(cab[3] or ""))
+        if 'FECHA_FACTURA' in campos:
+            var_FECHA_FACTURA.set(
+                cab[4].strftime("%d/%m/%Y") if isinstance(cab[4], datetime.date) else ""
+            )
         var_fecha.set(
-            cab[4].strftime("%d/%m/%Y") if isinstance(cab[4], datetime.date) else ""
+            cab[5].strftime("%d/%m/%Y") if isinstance(cab[5], datetime.date) else ""
         )
         if is_calidad:
             var_FECHA_SERVICIO_FINAL.set(
-                cab[5].strftime("%d/%m/%Y") if isinstance(cab[5], datetime.date) else ""
+                cab[6].strftime("%d/%m/%Y") if isinstance(cab[6], datetime.date) else ""
             )
-        var_tipo.set(str(cab[6] or ""))
-        init_diag = str(cab[7] or "")
+        var_tipo.set(str(cab[7] or ""))
+        init_diag = str(cab[8] or "")
         var_diag.set(init_diag.split(" - ")[0] if " - " in init_diag else init_diag)
-        var_num.set(str(cab[8] or ""))
+        var_num.set(str(cab[9] or ""))
 
         # 6) Pinto los bloques de detalle y los campos dinámicos
         _render_campos(campos, detalles, is_calidad)
@@ -1688,6 +1693,10 @@ def modificar_radicado(parent_root, conn, user_id):
         if is_calidad:
             MAIN_DEFS.append(
                 ("Fecha Servicio Final", var_FECHA_SERVICIO_FINAL,  "FECHA_SERVICIO_FINAL", "date", None)
+            )
+        if 'FECHA_FACTURA' in campos_paquete:
+            MAIN_DEFS.append(
+                ("Fecha Factura",       var_FECHA_FACTURA,  "FECHA_FACTURA", "date", None)
             )
         MAIN_DEFS += [
             ("Tipo Documento",       var_tipo,         "TIPO_DOC_ID",          "autocomplete", tipo_doc_opts),
@@ -1818,12 +1827,12 @@ def modificar_radicado(parent_root, conn, user_id):
             updates['DIAGNOSTICO'] = diag_code if cur.fetchone() else None
 
         # 4) Actualizo TIPIFICACION
-        main_cols = {"FECHA_SERVICIO", "FECHA_SERVICIO_FINAL", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO"}
+        main_cols = {"FECHA_SERVICIO", "FECHA_SERVICIO_FINAL", "FECHA_FACTURA", "TIPO_DOC_ID", "NUM_DOC", "DIAGNOSTICO"}
         main_updates = {k: updates[k] for k in updates if k in main_cols}
         if main_updates:
             set_parts, params = [], []
             for k, val in main_updates.items():
-                if k in ("FECHA_SERVICIO", "FECHA_SERVICIO_FINAL"):
+                if k in ("FECHA_SERVICIO", "FECHA_SERVICIO_FINAL", "FECHA_FACTURA"):
                     params.append(datetime.datetime.strptime(val, "%d/%m/%Y").date())
                 elif k in numeric_main:
                     try:    params.append(int(val))
@@ -2369,6 +2378,75 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         widgets['FECHA_SERVICIO_FINAL']   = entry_FECHA_SERVICIO_FINAL
 
         place_fixed_field(frm_final)
+    # ————— Bloque de creación del campo Fecha Factura —————
+    if 'FECHA_FACTURA' in campos_paquete:
+        frm_fact = make_field(
+            'Fecha Factura:',
+            'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/svgs/solid/calendar.svg'
+        )
+        var_FECHA_FACTURA = tk.StringVar()
+
+        entry_FECHA_FACTURA = ctk.CTkEntry(
+            frm_fact,
+            textvariable=var_FECHA_FACTURA,
+            placeholder_text='DD/MM/AAAA',
+            width=300,
+            fg_color=entry_fg_color,
+            text_color=entry_text_color,
+            placeholder_text_color=placeholder_color,
+            validate='key',
+            validatecommand=(win.register(lambda s: bool(re.match(r"^[0-9/]$", s))), '%S')
+        )
+        entry_FECHA_FACTURA.pack(fill='x', pady=(5, 0))
+        apply_focus_style(entry_FECHA_FACTURA,scroll)
+
+        def format_FECHA_FACTURA(event):
+            txt = var_FECHA_FACTURA.get()
+            if event.keysym in ('BackSpace','Delete','Left','Right','Home','End'):
+                return
+            digits = txt.replace('/', '')[:8]
+            parts = []
+            if len(digits) >= 2:
+                parts.append(digits[:2])
+                if len(digits) >= 4:
+                    parts.append(digits[2:4])
+                    parts.append(digits[4:])
+                else:
+                    parts.append(digits[2:])
+            else:
+                parts.append(digits)
+            new_text = '/'.join(parts)
+            var_FECHA_FACTURA.set(new_text)
+            entry_FECHA_FACTURA.icursor(len(new_text))
+
+        def val_FECHA_FACTURA(e=None):
+            txt = var_FECHA_FACTURA.get().strip()
+            try:
+                d = datetime.datetime.strptime(txt, '%d/%m/%Y').date()
+                if d > datetime.date.today():
+                    raise ValueError('Fecha futura')
+                entry_FECHA_FACTURA.configure(border_color='#2b2b2b', border_width=1)
+                lbl_err_FECHA_FACTURA.configure(text='')
+                return True
+            except Exception:
+                entry_FECHA_FACTURA.configure(border_color='red', border_width=2)
+                lbl_err_FECHA_FACTURA.configure(text='Fecha inválida')
+                return False
+
+        lbl_err_FECHA_FACTURA = ctk.CTkLabel(frm_fact, text='', text_color='red')
+        lbl_err_FECHA_FACTURA.pack(fill='x')
+
+        entry_FECHA_FACTURA.bind('<Double-Button-1>', select_all)
+        entry_FECHA_FACTURA.bind('<FocusIn>', select_all)
+        entry_FECHA_FACTURA.bind('<Key>', clear_selection_on_key)
+        entry_FECHA_FACTURA.bind('<KeyRelease>', format_FECHA_FACTURA)
+        entry_FECHA_FACTURA.bind('<FocusOut>', val_FECHA_FACTURA)
+
+        field_vars['FECHA_FACTURA'] = var_FECHA_FACTURA
+        widgets['FECHA_FACTURA']   = entry_FECHA_FACTURA
+
+        place_fixed_field(frm_fact)
+
 
 
     if 'TIPO_DOC_ID' in campos_paquete:
@@ -2890,6 +2968,8 @@ def iniciar_calidad(parent_root, conn, current_user_id):
                     if 'FECHA_SERVICIO' in field_vars and var_fecha.get().strip() else None)
         FECHA_SERVICIO_FINAL_obj = (datetime.datetime.strptime(var_FECHA_SERVICIO_FINAL.get().strip(), "%d/%m/%Y").date()
                     if 'FECHA_SERVICIO_FINAL' in field_vars and var_FECHA_SERVICIO_FINAL.get().strip() else None)
+        FECHA_FACTURA_obj = (datetime.datetime.strptime(var_FECHA_FACTURA.get().strip(), "%d/%m/%Y").date()
+                    if 'FECHA_FACTURA' in field_vars and var_FECHA_FACTURA.get().strip() else None)
         # TipoDoc
         if 'TIPO_DOC_ID' in field_vars and var_tipo.get().strip():
             nombre = var_tipo.get().strip().upper()
@@ -2912,10 +2992,10 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         # --- 2) Insertar cabecera TIPIFICACION con USER_ID ---
         cur2.execute("""
             INSERT INTO TIPIFICACION
-            (ASIGNACION_ID, FECHA_SERVICIO, FECHA_SERVICIO_FINAL, TIPO_DOC_ID, NUM_DOC, DIAGNOSTICO, USER_ID)
+            (ASIGNACION_ID, FECHA_SERVICIO, FECHA_SERVICIO_FINAL, FECHA_FACTURA, TIPO_DOC_ID, NUM_DOC, DIAGNOSTICO, USER_ID)
             OUTPUT INSERTED.ID
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (asig_id, fecha_obj, FECHA_SERVICIO_FINAL_obj, tipo_doc_id, num_doc_i, diag_code, current_user_id,))
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (asig_id, fecha_obj, FECHA_SERVICIO_FINAL_obj, FECHA_FACTURA_obj, tipo_doc_id, num_doc_i, diag_code, current_user_id,))
         tip_id = cur2.fetchone()[0]
 
         # --- 3) Insertar detalles y detectar si hay observaciones ---
@@ -2976,7 +3056,7 @@ def iniciar_calidad(parent_root, conn, current_user_id):
         # --- 5) Cerrar ventana y continuar/volver ---
         if final:
             # Desvincular eventos de fecha(s) existentes
-            for campo in ('FECHA_SERVICIO', 'FECHA_SERVICIO_FINAL'):
+            for campo in ('FECHA_SERVICIO', 'FECHA_SERVICIO_FINAL', 'FECHA_FACTURA'):
                 if campo in widgets:
                     widgets[campo].unbind("<KeyRelease>")
                     widgets[campo].unbind("<FocusOut>")
@@ -3498,6 +3578,8 @@ def ver_progreso(root, conn, current_user_id, role_id):
             select_cols.append("t.FECHA_SERVICIO AS FECHA_SERVICIO")
         if "FECHA_SERVICIO_FINAL" in campos_set:
             select_cols.append("t.FECHA_SERVICIO_FINAL AS FECHA_SERVICIO_FINAL")
+        if "FECHA_FACTURA" in campos_set:
+            select_cols.append("t.FECHA_FACTURA AS FECHA_FACTURA")
         if "AUTORIZACION" in campos_set:
             select_cols.append("d.AUTORIZACION")
         if "CODIGO_SERVICIO" in campos_set:
@@ -4258,6 +4340,8 @@ def exportar_paquete(root, conn):
             select_cols.append("CONVERT(varchar(10), t.FECHA_SERVICIO, 103) AS FECHA_SERVICIO")
         if "FECHA_SERVICIO_FINAL" in campos_set:
             select_cols.append("CONVERT(varchar(10), t.FECHA_SERVICIO_FINAL, 103) AS FECHA_SERVICIO_FINAL")
+        if "FECHA_FACTURA" in campos_set:
+            select_cols.append("CONVERT(varchar(10), t.FECHA_FACTURA, 103) AS FECHA_FACTURA")
         if "AUTORIZACION" in campos_set:
             select_cols.append("d.AUTORIZACION")
         if "CODIGO_SERVICIO" in campos_set:
@@ -5960,7 +6044,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         sel2 = ctk.CTkToplevel(self._tk_root)
         sel2.title(f"Paquete {num_paquete}: Campos")
         campos = [
-            "FECHA_SERVICIO","FECHA_SERVICIO_FINAL","TIPO_DOC_ID","NUM_DOC",
+            "FECHA_SERVICIO","FECHA_SERVICIO_FINAL","FECHA_FACTURA","TIPO_DOC_ID","NUM_DOC",
             "DIAGNOSTICO","AUTORIZACION","CODIGO_SERVICIO",
             "CANTIDAD","VLR_UNITARIO","COPAGO","OBSERVACION"
         ]
