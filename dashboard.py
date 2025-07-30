@@ -3612,7 +3612,7 @@ def ver_progreso(root, conn, current_user_id, role_id):
         sql_export = (
             "SELECT " + ", ".join(select_cols) + " "
             "FROM ASIGNACION_TIPIFICACION a "
-            "JOIN TIPIFICACION t               ON t.ASIGNACION_ID          = a.RADICADO "
+            "LEFT JOIN TIPIFICACION t          ON t.ASIGNACION_ID          = a.RADICADO "
             "LEFT JOIN TIPO_DOC td             ON t.TIPO_DOC_ID            = td.ID "
             "LEFT JOIN USERS u                 ON t.USER_ID                = u.ID "
             "LEFT JOIN TIPIFICACION_DETALLES d ON d.TIPIFICACION_ID        = t.ID "
