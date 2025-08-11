@@ -3641,16 +3641,21 @@ def ver_progreso(root, conn, current_user_id, role_id):
         cur.execute(sql_export, params)
         rows = cur.fetchall()
         headers = [col[0] for col in cur.description]
-        rename_map = {
-            "FechaDigitacion": "FECHA DE DIGITACION",
-            "NumDocumentoFuncionario": "DOCUMENTO FUNCIONARIO",
-            "NombreFuncionario": "FUNCIONARIO",
-        }
-        headers = [rename_map.get(h, h) for h in headers]
         cur.close()
 
         # --- Cálculo de campos digitados y resumen por funcionario ---
         df = pd.DataFrame(rows, columns=headers)
+        rename_map = {
+            "FechaDigitacion": "FECHA_DIGITACION",
+            "NumDocumentoFuncionario": "DOCUMENTO_FUNCIONARIO",
+            "NombreFuncionario": "FUNCIONARIO",
+            "TipoDocumento": "TIPO_DOCUMENTO",
+            "NumeroDocumento": "NUMERO_DOCUMENTO",
+            "NUM_PAQUETE": "NUMERO_PAQUETE",
+            "CM_COPAGO": "CUOTA_MODERADORA_O_COPAGO",
+            "VLR_UNITARIO": "VALOR_UNITARIO",
+        }
+        df.rename(columns=rename_map, inplace=True)
 
         # Columnas que intervienen para deduplicar registros de un radicado
         dup_keys = [c for c in ['FUNCIONARIO', 'RADICADO'] if c in df.columns]
@@ -3658,9 +3663,12 @@ def ver_progreso(root, conn, current_user_id, role_id):
         # Reglas de conteo de campos digitados por radicado
         single_once = [
             "FECHA_SERVICIO",
+            "FECHA_SERVICIO_FINAL",
+            "FECHA_FACTURA",
+            "AUTORIZACION",
             "DIAGNOSTICO",
-            "TipoDocumento",
-            "NumeroDocumento",
+            "TIPO_DOCUMENTO",
+            "NUMERO_DOCUMENTO",
         ]
 
         def compute_group_counts(group: pd.DataFrame) -> pd.Series:
@@ -3672,16 +3680,15 @@ def ver_progreso(root, conn, current_user_id, role_id):
                 if col in group.columns and any_filled(col):
                     count += 1
 
-            if "CM_COPAGO" in group.columns and group["CM_COPAGO"].apply(
+            if "CUOTA_MODERADORA_O_COPAGO" in group.columns and group["CUOTA_MODERADORA_O_COPAGO"].apply(
                 lambda v: pd.notna(v) and str(v).strip() not in ("", "0")
             ).any():
                 count += 1
 
             multi_cols = [
-                "AUTORIZACION",
                 "CODIGO_SERVICIO",
                 "CANTIDAD",
-                "VLR_UNITARIO",
+                "VALOR_UNITARIO",
             ]
             for col in multi_cols:
                 if col in group.columns:
@@ -3690,18 +3697,18 @@ def ver_progreso(root, conn, current_user_id, role_id):
             return pd.Series([count] * len(group), index=group.index)
 
         if "RADICADO" in df.columns:
-            df["CAMPOS DIGITADOS"] = (
+            df["CAMPOS_DIGITADOS"] = (
                 df.groupby("RADICADO", group_keys=False)
                   .apply(compute_group_counts, include_groups=False)
             )
         else:
-            df["CAMPOS DIGITADOS"] = compute_group_counts(df)
+            df["CAMPOS_DIGITADOS"] = compute_group_counts(df)
 
         dedup_df = df.drop_duplicates(subset=dup_keys)
-        resumen_df = (dedup_df.groupby('FUNCIONARIO')['CAMPOS DIGITADOS']
+        resumen_df = (dedup_df.groupby('FUNCIONARIO')['CAMPOS_DIGITADOS']
                                 .sum()
                                 .reset_index()
-                                .rename(columns={'CAMPOS DIGITADOS': 'TOTAL CAMPOS'}))
+                                .rename(columns={'CAMPOS_DIGITADOS': 'TOTAL CAMPOS'}))
 
         rows = df.values.tolist()
         headers = df.columns.tolist()
@@ -4396,9 +4403,15 @@ def exportar_paquete(root, conn):
         rows = cur2.fetchall()
         headers = [col[0] for col in cur2.description]
         rename_map = {
-            "FechaDigitacion": "FECHA DE DIGITACION",
-            "NumDocumentoFuncionario": "DOCUMENTO FUNCIONARIO",
+            "FechaDigitacion": "FECHA_DIGITACION",
+            "NumDocumentoFuncionario": "DOCUMENTO_FUNCIONARIO",
             "NombreFuncionario": "FUNCIONARIO",
+            "TipoDocumento": "TIPO_DOCUMENTO",
+            "NumeroDocumento": "NUMERO_DOCUMENTO",
+            "NUM_PAQUETE": "NUMERO_PAQUETE",
+            "CM_COPAGO": "CUOTA_MODERADORA_O_COPAGO",
+            "VLR_UNITARIO": "VALOR_UNITARIO",
+            "COD_SERVICIO": "CODIGO_SERVICIO",
         }
         headers = [rename_map.get(h, h) for h in headers]
         cur2.close()
