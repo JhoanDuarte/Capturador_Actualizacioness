@@ -3681,7 +3681,7 @@ def ver_progreso(root, conn, current_user_id, role_id):
                     count += 1
 
             if "CUOTA_MODERADORA_O_COPAGO" in group.columns and group["CUOTA_MODERADORA_O_COPAGO"].apply(
-                lambda v: pd.notna(v) and str(v).strip() not in ("", "0")
+                lambda v: pd.notna(v) and str(v).strip() != ""
             ).any():
                 count += 1
 
