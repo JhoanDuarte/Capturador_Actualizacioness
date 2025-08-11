@@ -305,6 +305,9 @@ class LoginWindow(QtWidgets.QWidget):
 
         vbox.addLayout(hpwd)
 
+        # Permitir iniciar sesión con Enter
+        self.edit_doc.returnPressed.connect(self.on_login)
+        self.edit_pwd.returnPressed.connect(self.on_login)
 
         # Botón Iniciar sesión
         btn = QtWidgets.QPushButton("Iniciar sesión", self.panel)
@@ -319,6 +322,8 @@ class LoginWindow(QtWidgets.QWidget):
                 background-color: #339CFF;
             }
         """)
+        btn.setDefault(True)
+        btn.setAutoDefault(True)
         btn.clicked.connect(self.on_login)
         vbox.addWidget(btn, alignment=QtCore.Qt.AlignCenter)
 
