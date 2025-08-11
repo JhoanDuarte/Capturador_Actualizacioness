@@ -3493,6 +3493,11 @@ def ver_progreso(root, conn, current_user_id, role_id):
         """Exporta a Excel aplicando formato y opcionalmente una hoja de resumen."""
         # 1) Crear DataFrame
         df = pd.DataFrame(rows, columns=headers)
+        # Ordenar por FECHA_DIGITACION si existe
+        if "FECHA_DIGITACION" in df.columns:
+            df.sort_values("FECHA_DIGITACION", inplace=True)
+        if resumen_df is not None and "TOTAL CAMPOS" in resumen_df.columns:
+            resumen_df.sort_values("TOTAL CAMPOS", ascending=False, inplace=True)
 
         # 2) Escribir con XlsxWriter
         with pd.ExcelWriter(path, engine='xlsxwriter') as writer:
@@ -3657,6 +3662,10 @@ def ver_progreso(root, conn, current_user_id, role_id):
         }
         df.rename(columns=rename_map, inplace=True)
 
+        # Ordenar por fecha de digitación (menor a mayor)
+        if "FECHA_DIGITACION" in df.columns:
+            df.sort_values("FECHA_DIGITACION", inplace=True)
+
         # Columnas que intervienen para deduplicar registros de un radicado
         dup_keys = [c for c in ['FUNCIONARIO', 'RADICADO'] if c in df.columns]
 
@@ -3709,6 +3718,7 @@ def ver_progreso(root, conn, current_user_id, role_id):
                                 .sum()
                                 .reset_index()
                                 .rename(columns={'CAMPOS_DIGITADOS': 'TOTAL CAMPOS'}))
+        resumen_df.sort_values('TOTAL CAMPOS', ascending=False, inplace=True)
 
         rows = df.values.tolist()
         headers = df.columns.tolist()
@@ -5750,10 +5760,43 @@ class DashboardWindow(QtWidgets.QMainWindow):
         settings = QtCore.QSettings("Procesos Y Servicios", "CapturadorDeDatos")
         settings.setValue("theme", self.theme)
 
+    def _update_blur_pixmap(self):
+        """Regenera el fondo y el blur para el panel central."""
+        bg_file = "FondoDashboardDark.png" if self.theme == "dark" else "FondoDashboardWhite.png"
+        bg_path = resource_path(bg_file)
+        if os.path.exists(bg_path):
+            pix = QtGui.QPixmap(bg_path).scaled(
+                self.size(),
+                QtCore.Qt.KeepAspectRatioByExpanding,
+                QtCore.Qt.SmoothTransformation
+            )
+            palette = QtGui.QPalette()
+            palette.setBrush(QtGui.QPalette.Window, QtGui.QBrush(pix))
+            self.setPalette(palette)
+
+            scene = QGraphicsScene()
+            item = QGraphicsPixmapItem(pix)
+            blur = QGraphicsBlurEffect()
+            blur.setBlurRadius(15)
+            item.setGraphicsEffect(blur)
+            scene.addItem(item)
+
+            img = QImage(pix.size(), QImage.Format_ARGB32_Premultiplied)
+            img.fill(QtCore.Qt.transparent)
+            painter = QPainter(img)
+            scene.render(painter)
+            painter.end()
+
+            self.bg_blur_pix = QtGui.QPixmap.fromImage(img)
+            if hasattr(self, "panel"):
+                self.panel.bg_blur = self.bg_blur_pix
+                self.panel.update()
+
 
     def _on_resize(self, event):
         """Reposiciona el botón de tema al cambiar tamaño."""
         self.theme_btn.move(self.width() - 60, self.height() - 60)
+        self._update_blur_pixmap()
         return super().resizeEvent(event)
 
     def center_on_screen(self):
